@@ -214,7 +214,7 @@ final class GameModel {
         }
         if mode == .levels, game.outcome == .won { defaults.set(level + 1, forKey: Key.level) }
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
-        announce(result)
+        announce(result, fogReturned: before.board.isLit)
         scene.sync(placement: result)
     }
 
@@ -307,6 +307,7 @@ final class GameModel {
             return
         case .lantern:
             coinGame.lightCrater()
+            show("Lantern lit until your next tile", symbol: powerUp.symbolName)
         }
         addCoins(-powerUp.price)
         undoPoint = nil
@@ -511,7 +512,7 @@ final class GameModel {
         rotationTurns += steps
     }
 
-    private func announce(_ result: PlacementResult) {
+    private func announce(_ result: PlacementResult, fogReturned: Bool) {
         switch game.outcome {
         case .won:
             haptics.success()
@@ -544,6 +545,8 @@ final class GameModel {
             show("\(quest.terrain.displayName) quest closed off", symbol: "xmark.circle")
         } else if let quest = result.startedQuests.first {
             show("New quest: \(quest.terrain.displayName) to \(quest.target)", symbol: quest.terrain.symbolName)
+        } else if fogReturned {
+            show("The fog rolls back in", symbol: "cloud.fog.fill")
         }
     }
 

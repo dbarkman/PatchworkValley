@@ -146,12 +146,14 @@ final class ValleyScene: SKScene {
     // MARK: - Mountains
 
     private func syncMountains(_ board: Board, blasted: Hex?, aiming: Bool, in view: SKView) {
-        for (hex, sprite) in mountainSprites where !board.revealedMountains.contains(hex) {
-            mountainSprites[hex] = nil
+        // Mountains the fog takes back (when a Lantern goes out) sink into it, a few at a time.
+        let fogged = mountainSprites.keys.filter { !board.revealedMountains.contains($0) }.sorted { ($0.r, $0.q) < ($1.r, $1.q) }
+        for (index, hex) in fogged.enumerated() {
+            guard let sprite = mountainSprites.removeValue(forKey: hex) else { continue }
             if hex == blasted {
                 explode(sprite)
             } else {
-                sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+                sink(sprite, delay: fogged.count > 3 ? Double(index) * 0.03 : 0)
             }
         }
         // Mountains seen for the first time rise out of the fog, a few at a time when a Lantern lights them all.
@@ -192,7 +194,10 @@ final class ValleyScene: SKScene {
     private func syncLakes(_ board: Board, in view: SKView) {
         for (hex, sprite) in lakeSprites where !board.revealedLakes.contains(hex) {
             lakeSprites[hex] = nil
-            sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+            sprite.run(.sequence([
+                .group([.fadeOut(withDuration: 0.3), .scale(to: 0.85, duration: 0.3)]),
+                .removeFromParent(),
+            ]))
         }
         for hex in board.revealedLakes where lakeSprites[hex] == nil {
             if lakeTexture == nil { lakeTexture = render(TileDrawing.lakeLayers(geometry: geometry), in: view) }
@@ -254,6 +259,17 @@ final class ValleyScene: SKScene {
             .run { [weak self] in self?.puff(at: home, color: Palette.dust, count: 6) },
             lift,
         ]))
+    }
+
+    /// A mountain settles back into the fog: the rise played backwards.
+    private func sink(_ sprite: SKSpriteNode, delay: TimeInterval) {
+        let drop = SKAction.group([
+            .fadeOut(withDuration: 0.3),
+            .moveBy(x: 0, y: -geometry.radius * 0.3, duration: 0.3),
+            .scale(to: 0.6, duration: 0.3),
+        ])
+        drop.timingMode = .easeIn
+        sprite.run(.sequence([.wait(forDuration: delay), drop, .removeFromParent()]))
     }
 
     /// Dynamite: the mountain bursts apart in a flash and flying rock.

@@ -21,11 +21,18 @@ public struct Board: Sendable {
     public private(set) var openSlots: Set<Hex> = []
     /// Every mountain, seen or not. Empty on the open plane.
     public private(set) var mountains: Set<Hex> = []
-    /// Mountains the player has seen: those touching a tile, or all of them after a Lantern.
-    public private(set) var revealedMountains: Set<Hex> = []
     /// Lakes on the crater floor, seen or not. A river edge touching one counts as a match.
     public private(set) var lakes: Set<Hex> = []
-    public private(set) var revealedLakes: Set<Hex> = []
+    /// A Lantern lights the whole crater until the next tile is placed.
+    public private(set) var isLit = false
+    /// Mountains and lakes that have touched a tile. They stay in view for good.
+    private var seenMountains: Set<Hex> = []
+    private var seenLakes: Set<Hex> = []
+
+    /// Mountains in view: those touching a tile, or every one while a Lantern is lit.
+    public var revealedMountains: Set<Hex> { isLit ? mountains : seenMountains }
+    /// Lakes in view: those touching a tile, or every one while a Lantern is lit.
+    public var revealedLakes: Set<Hex> { isLit ? lakes : seenLakes }
     /// Hexes inside the crater rim, or nil on the open plane.
     public let floor: Set<Hex>?
     /// Every placement must match at least one neighboring edge.
@@ -191,12 +198,14 @@ public struct Board: Sendable {
     mutating func place(_ tile: Tile, at hex: Hex) {
         tiles[hex] = tile
         openSlots.remove(hex)
+        // Placing a tile puts a Lantern out: the fog returns to everything not touching a tile.
+        isLit = false
         for neighbor in hex.neighbors where tiles[neighbor] == nil {
             if mountains.contains(neighbor) {
                 // The fog lifts: a mountain or lake next to a tile comes into view.
-                revealedMountains.insert(neighbor)
+                seenMountains.insert(neighbor)
             } else if lakes.contains(neighbor) {
-                revealedLakes.insert(neighbor)
+                seenLakes.insert(neighbor)
             } else if isBuildable(neighbor) {
                 openSlots.insert(neighbor)
             }
@@ -208,14 +217,13 @@ public struct Board: Sendable {
     mutating func clearMountain(at hex: Hex) -> Bool {
         guard clearableMountains.contains(hex) else { return false }
         mountains.remove(hex)
-        revealedMountains.remove(hex)
+        seenMountains.remove(hex)
         if hex.neighbors.contains(where: { tiles[$0] != nil }) { openSlots.insert(hex) }
         return true
     }
 
-    /// Lantern: lifts the fog off every mountain and lake in the crater.
-    mutating func revealAll() {
-        revealedMountains = mountains
-        revealedLakes = lakes
+    /// Lantern: lights every mountain and lake in the crater until the next tile is placed.
+    mutating func light() {
+        isLit = true
     }
 }

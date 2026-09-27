@@ -400,10 +400,10 @@ public struct ValleyGame: Sendable {
         return board.clearMountain(at: hex)
     }
 
-    /// Lantern power-up: shows every mountain and lake in the crater.
+    /// Lantern power-up: shows every mountain and lake in the crater until the next tile is placed.
     public mutating func lightCrater() {
         guard canUsePowerUps else { return }
-        board.revealAll()
+        board.light()
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.

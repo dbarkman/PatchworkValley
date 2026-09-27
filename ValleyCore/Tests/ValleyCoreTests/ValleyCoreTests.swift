@@ -630,18 +630,64 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(!clearedRim, "the rim stays")
     }
 
-    @Test func lanternRevealsEveryMountain() {
+    @Test func lanternLightsEveryMountainUntilTheNextTile() {
         let crater = Crater.generate(seed: 4, radius: 4, peakCount: 12, room: 37)
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
-        board.revealAll()
+        board.light()
+        #expect(board.isLit)
         #expect(board.revealedMountains == crater.mountains)
+    }
+
+    @Test func theFogReturnsAfterTheLanternTurnButKeepsWhatTilesTouch() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [Hex(5, 0)], peaks: [Hex(2, 0), Hex(3, -3)], lakes: [Hex(-2, 3)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.light()
+        #expect(board.revealedMountains == [Hex(5, 0), Hex(2, 0), Hex(3, -3)])
+        #expect(board.revealedLakes == [Hex(-2, 3)])
+
+        board.place(tile("mmmmmm", id: 1), at: east)
+        #expect(!board.isLit)
+        #expect(board.revealedMountains == [Hex(2, 0)], "only the peak touching the new tile stays in view")
+        #expect(board.revealedLakes.isEmpty)
+        #expect(board.isInFog(Hex(3, -3)))
+        #expect(board.isInFog(Hex(5, 0)))
+        #expect(board.isInFog(Hex(-2, 3)))
+    }
+
+    @Test func dynamiteCanReachAnyLitMountainDuringTheLanternTurn() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [Hex(5, 0)], peaks: [Hex(3, -3)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        #expect(board.clearableMountains.isEmpty)
+        board.light()
+        #expect(board.clearableMountains == [Hex(3, -3)], "the rim still can't be blasted")
+        let cleared = board.clearMountain(at: Hex(3, -3))
+        #expect(cleared)
+        #expect(!board.mountains.contains(Hex(3, -3)))
+    }
+
+    @Test func aLitLakeCountsInThePreview() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [], lakes: [Hex(2, 0)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.light()
+        #expect(board.evaluate(tile("wmmmmm"), at: east).matchingEdges.contains(0))
+    }
+
+    @Test func placingATileInTheGamePutsTheLanternOut() throws {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(3, -3)])
+        let board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        var game = ValleyGame(rules: .coins(valley: 5), board: board, queue: [tile("mmmmmm")], tilesLeft: 5)
+        game.lightCrater()
+        #expect(game.board.revealedMountains == [Hex(3, -3)])
+        let placed = game.placeCurrent(at: east)
+        _ = try #require(placed)
+        #expect(game.board.isInFog(Hex(3, -3)))
     }
 
     @Test func revealedMountainsCountTowardAPerfectFit() {
         let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(2, -1), Hex(1, 1), Hex(0, 1)])
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
         board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
-        board.revealAll()
+        board.light()
         // East of the origin: neighbors are two mountains east, the origin, (1,-1), and two more mountains below.
         #expect(board.evaluate(tile("mmmmmm"), at: east).isPerfect)
     }
@@ -773,10 +819,10 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(result.evaluation.matchingEdges.contains(0), "placing revealed the lake the river flows into")
     }
 
-    @Test func lanternRevealsLakesToo() {
+    @Test func lanternLightsLakesToo() {
         let crater = Crater.generate(seed: 6, radius: 4, peakCount: 8, lakeCount: 2, room: 37)
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
-        board.revealAll()
+        board.light()
         #expect(board.revealedLakes == crater.lakes)
     }
 

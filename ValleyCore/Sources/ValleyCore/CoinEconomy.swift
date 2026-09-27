@@ -8,18 +8,18 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     case wildcard
     /// Blast a revealed mountain off the crater floor.
     case dynamite
-    /// Lift the fog off every mountain and lake in the crater.
+    /// Light every mountain and lake in the crater for one turn; the fog returns after the next tile.
     case lantern
 
     public var id: Self { self }
 
     public var price: Int {
         switch self {
-        case .undo: 60
-        case .swap: 80
-        case .wildcard: 160
-        case .dynamite: 120
-        case .lantern: 100
+        case .undo: 50
+        case .swap: 100
+        case .wildcard: 150
+        case .dynamite: 200
+        case .lantern: 300
         }
     }
 
@@ -39,13 +39,13 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// Coin mode's other numbers. A planning bot earns about 100–110 coins per valley
-/// from matched sides, quests and perfect fits (see `coinEconomyReport` in the
-/// tests), so with the finishing bonus a valley pays for roughly one power-up.
+/// Coin mode's other numbers. A planning bot earns about 80–100 coins per valley,
+/// finishing bonus included, from matched sides, quests and perfect fits (see
+/// `coinEconomyReport` in the tests): about one Swap a valley, and a Lantern takes three.
 public enum CoinEconomy {
-    public static let startingWallet = 300
+    public static let startingWallet = 500
     /// Paid the moment a valley's stack is used up.
     public static let valleyBonus = 20
     /// "+3 tiles" when a valley runs out with a quest close.
-    public static let continuePrice = 200
+    public static let continuePrice = 250
 }

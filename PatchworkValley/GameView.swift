@@ -824,7 +824,7 @@ extension PowerUp {
         case .swap: "Trade the tile in your hand for a fresh one."
         case .wildcard: "Turn the tile in your hand into a patch that matches anything."
         case .dynamite: "Blast a mountain you can see, opening the ground beneath it."
-        case .lantern: "Lift the fog to see every mountain and lake in the valley."
+        case .lantern: "Light up every mountain and lake in the valley. The fog returns after your next tile."
         }
     }
 }
