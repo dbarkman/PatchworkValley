@@ -30,9 +30,19 @@ public struct Crater: Hashable, Sendable {
 
     /// Builds a crater of `radius` with about `peakCount` peaks and `lakeCount` lakes,
     /// keeping at least `room` open floor cells connected to the start (the stack plus the starter).
-    public static func generate(seed: UInt64, radius: Int, peakCount: Int, lakeCount: Int = 0, room: Int) -> Crater {
+    /// `roughness` (0 to 1) sets how far the outline wanders, from round to ragged, and the
+    /// crater's center can sit up to `maxOffset` steps from the start, so play may begin near a wall.
+    public static func generate(
+        seed: UInt64,
+        radius: Int,
+        roughness: Double = 1,
+        maxOffset: Int = 0,
+        peakCount: Int,
+        lakeCount: Int = 0,
+        room: Int
+    ) -> Crater {
         var rng = SplitMix64(seed: seed)
-        let floorList = outline(radius: radius, room: room, rng: &rng)
+        let floorList = outline(radius: radius, roughness: roughness, maxOffset: maxOffset, room: room, rng: &rng)
         let floor = Set(floorList)
         let rim = Set(floorList.flatMap(\.neighbors)).subtracting(floor)
         // The start and its neighbors stay open, so the first placements always have somewhere to go.
@@ -72,26 +82,40 @@ public struct Crater: Hashable, Sendable {
         return Crater(radius: radius, floor: floor, rim: rim, peaks: peaks, lakes: lakes)
     }
 
-    /// An organic floor: its edge wanders in and out around the circle, following a
-    /// few overlapping waves, so every crater has its own bays and points. Returned in a
-    /// fixed order, connected, and always holding the start area and at least `room` hexes.
-    private static func outline(radius: Int, room: Int, rng: inout SplitMix64) -> [Hex] {
-        let candidates = Hex.within(radius: radius + 2)
+    /// An organic floor: its edge wanders in and out around its center, following a few
+    /// overlapping waves scaled by `roughness`, so every crater has its own bays and points.
+    /// Returned in a fixed order, connected, and always holding the start area and at least
+    /// `room` hexes plus a little slack.
+    private static func outline(radius: Int, roughness: Double, maxOffset: Int, room: Int, rng: inout SplitMix64) -> [Hex] {
+        let startArea = [Hex.origin] + Hex.origin.neighbors
+        var attempts = 0
         while true {
+            attempts += 1
+            // A wandering center can squeeze the start; after enough misses, center it so this always ends.
+            let offsetLimit = attempts > 30 ? 0 : maxOffset
+            var center = Hex.origin
+            for _ in 0..<Int.random(in: 0...offsetLimit, using: &rng) {
+                center = center.neighbor(Int.random(in: 0..<6, using: &rng))
+            }
             let waves = (2...4).map { frequency in
-                (amplitude: Double.random(in: 0.2...0.6, using: &rng),
+                (amplitude: roughness * Double.random(in: 0.2...0.6, using: &rng),
                  frequency: Double(frequency),
                  phase: Double.random(in: 0..<(2 * .pi), using: &rng))
             }
+            let candidates = Hex.within(radius: radius + 2).map { Hex($0.q + center.q, $0.r + center.r) }
             let floor = candidates.filter { hex in
-                // Position in hex steps: neighbors are one step apart.
-                let x = Double(hex.q) + Double(hex.r) / 2
-                let y = -Double(hex.r) * 3.squareRoot() / 2
+                // Position relative to the center, in hex steps: neighbors are one step apart.
+                let q = Double(hex.q - center.q)
+                let r = Double(hex.r - center.r)
+                let x = q + r / 2
+                let y = -r * 3.squareRoot() / 2
                 let reach = Double(radius) + 0.3 + waves.reduce(0) { $0 + $1.amplitude * sin($1.frequency * atan2(y, x) + $1.phase) }
                 return (x * x + y * y).squareRoot() <= reach
             }
+            let floorSet = Set(floor)
+            guard startArea.allSatisfy(floorSet.contains) else { continue }
             // Keep only floor joined to the start, in case the edge pinched off a sliver.
-            let connected = reachableSet(floor: Set(floor), blocked: [])
+            let connected = reachableSet(floor: floorSet, blocked: [])
             let kept = floor.filter(connected.contains)
             if kept.count >= room + 8 { return kept }
         }

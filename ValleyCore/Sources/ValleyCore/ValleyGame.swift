@@ -26,6 +26,10 @@ public struct Rules: Sendable {
     public var questTargetBonus = 0
     /// Coin mode's crater radius. Zero means the open plane.
     public var craterRadius = 0
+    /// How far the crater's outline wanders, from 0 (round) to 1 (ragged).
+    public var craterRoughness = 1.0
+    /// How many steps the crater's center may sit from the start.
+    public var craterOffset = 0
     /// Peaks and ridges standing on the crater floor.
     public var peakCount = 0
     /// Lakes hidden on the crater floor.
@@ -51,9 +55,13 @@ public struct Rules: Sendable {
         rules.questCoinsPerTile = 2
         rules.questTargetBonus = min(6, (max(1, valley) - 1) / 3)
         rules.continueTiles = 3
-        // An irregular crater about 4 steps across: 6 peaks in valley 1, one more every two valleys up to 14.
+        // A crater about 4 steps from the start to its wall: nearly round in valley 1, fully
+        // ragged by valley 10, and centered up to a step away early on (two from valley 3),
+        // so play can begin near a wall. 6 peaks in valley 1, one more every two valleys up to 14.
         // See `coinEconomyReport` for how often a room-keeping bot gets stuck.
         rules.craterRadius = 4
+        rules.craterRoughness = min(1, 0.1 * Double(max(1, valley)))
+        rules.craterOffset = valley >= 3 ? 2 : 1
         rules.peakCount = min(14, 5 + (max(1, valley) + 1) / 2)
         // Two lakes to find, three from valley 6.
         rules.lakeCount = valley >= 6 ? 3 : 2
@@ -176,6 +184,8 @@ public struct ValleyGame: Sendable {
             let crater = Crater.generate(
                 seed: seed ^ 0xC4A7_E500,
                 radius: rules.craterRadius,
+                roughness: rules.craterRoughness,
+                maxOffset: rules.craterOffset,
                 peakCount: rules.peakCount,
                 lakeCount: rules.lakeCount,
                 room: rules.startingTiles + 1

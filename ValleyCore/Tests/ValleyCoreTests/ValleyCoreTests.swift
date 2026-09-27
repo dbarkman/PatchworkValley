@@ -533,6 +533,34 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         }
     }
 
+    @Test func calmCratersAreRoundAndAllAlike() {
+        let first = Crater.generate(seed: 1, radius: 4, roughness: 0, peakCount: 0, room: 37)
+        let second = Crater.generate(seed: 2, radius: 4, roughness: 0, peakCount: 0, room: 37)
+        #expect(first.floor == second.floor)
+        #expect(Set(Hex.within(radius: 3)).isSubset(of: first.floor))
+    }
+
+    /// With the center free to wander, some valleys start near a wall; the start area always stays open.
+    @Test func offsetCratersCanStartNearAWall() {
+        let wallDistances = (1...40).map { seed -> Int in
+            let crater = Crater.generate(seed: UInt64(seed), radius: 4, roughness: 0.3, maxOffset: 2, peakCount: 0, room: 37)
+            #expect(crater.floor.isSuperset(of: [.origin] + Hex.origin.neighbors))
+            #expect(crater.reachableFloor >= 37)
+            return crater.rim.map { $0.distance(to: .origin) }.min() ?? 0
+        }
+        let centered = Crater.generate(seed: 1, radius: 4, roughness: 0.3, maxOffset: 0, peakCount: 0, room: 37)
+        let centeredDistance = centered.rim.map { $0.distance(to: .origin) }.min() ?? 0
+        #expect(wallDistances.contains { $0 < centeredDistance })
+        #expect(wallDistances.allSatisfy { $0 >= 2 })
+    }
+
+    @Test func coinCratersGetRougherAndWanderFurther() {
+        #expect(Rules.coins(valley: 1).craterRoughness < Rules.coins(valley: 10).craterRoughness)
+        #expect(Rules.coins(valley: 10).craterRoughness == 1)
+        #expect(Rules.coins(valley: 1).craterOffset == 1)
+        #expect(Rules.coins(valley: 3).craterOffset == 2)
+    }
+
     @Test func craterShapesVary() {
         let shapes = Set((1...10).map { Crater.generate(seed: $0, radius: 4, peakCount: 0, room: 37).floor })
         #expect(shapes.count == 10)
