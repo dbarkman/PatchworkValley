@@ -23,6 +23,9 @@ public struct Board: Sendable {
     public private(set) var mountains: Set<Hex> = []
     /// Mountains the player has seen: those touching a tile, or all of them after a Lantern.
     public private(set) var revealedMountains: Set<Hex> = []
+    /// Lakes on the crater floor, seen or not. A river edge touching one counts as a match.
+    public private(set) var lakes: Set<Hex> = []
+    public private(set) var revealedLakes: Set<Hex> = []
     /// Hexes inside the crater rim, or nil on the open plane.
     public let floor: Set<Hex>?
     /// Every placement must match at least one neighboring edge.
@@ -38,18 +41,19 @@ public struct Board: Sendable {
     public init(starter: Tile, crater: Crater, requiresMatch: Bool) {
         floor = crater.floor
         mountains = crater.mountains
+        lakes = crater.lakes
         self.requiresMatch = requiresMatch
         place(starter, at: .origin)
     }
 
     /// Floor that no mountain stands on.
     public func isBuildable(_ hex: Hex) -> Bool {
-        !mountains.contains(hex) && (floor?.contains(hex) ?? true)
+        !mountains.contains(hex) && !lakes.contains(hex) && (floor?.contains(hex) ?? true)
     }
 
-    /// Every side of `hex` faces a tile, a mountain or the crater's edge.
-    public func isEnclosed(_ hex: Hex) -> Bool {
-        hex.neighbors.allSatisfy { tiles[$0] != nil || !isBuildable($0) }
+    /// A mountain or lake the player hasn't seen yet.
+    public func isInFog(_ hex: Hex) -> Bool {
+        (mountains.contains(hex) && !revealedMountains.contains(hex)) || (lakes.contains(hex) && !revealedLakes.contains(hex))
     }
 
     /// Revealed mountains standing on the floor. The rim can't be blasted.
@@ -67,10 +71,13 @@ public struct Board: Sendable {
         for direction in 0..<6 {
             let neighborHex = hex.neighbor(direction)
             guard let neighbor = tiles[neighborHex] else {
-                // Open floor, or a mountain still in fog, reads as open: the preview mustn't give the fog away.
-                if isBuildable(neighborHex) || (mountains.contains(neighborHex) && !revealedMountains.contains(neighborHex)) {
-                    isEnclosed = false
+                if revealedLakes.contains(neighborHex) {
+                    // A river flows into a lake; land just borders it.
+                    if tile.edge(direction).counts(as: .water) { matching.append(direction) }
+                    continue
                 }
+                // Open floor, or anything still in fog, reads as open: the preview mustn't give the fog away.
+                if isBuildable(neighborHex) || isInFog(neighborHex) { isEnclosed = false }
                 continue
             }
             let mine = tile.edge(direction)
@@ -133,11 +140,28 @@ public struct Board: Sendable {
         var region: Set<Hex> = [start]
         var pending = [start]
         while let hex = pending.popLast() {
+            if lakes.contains(hex) {
+                // A lake joins every river that flows into it.
+                for direction in 0..<6 {
+                    let next = hex.neighbor(direction)
+                    guard !region.contains(next),
+                          let nextTile = lookup(next),
+                          nextTile.edge(Hex.opposite(direction)).counts(as: .water) else { continue }
+                    region.insert(next)
+                    pending.append(next)
+                }
+                continue
+            }
             guard let tile = lookup(hex) else { continue }
             for direction in 0..<6 where tile.edge(direction).counts(as: terrain) {
                 let next = hex.neighbor(direction)
-                guard !region.contains(next),
-                      let nextTile = lookup(next),
+                guard !region.contains(next) else { continue }
+                if terrain == .water && lakes.contains(next) {
+                    region.insert(next)
+                    pending.append(next)
+                    continue
+                }
+                guard let nextTile = lookup(next),
                       nextTile.edge(Hex.opposite(direction)).counts(as: terrain) else { continue }
                 region.insert(next)
                 pending.append(next)
@@ -150,6 +174,11 @@ public struct Board: Sendable {
     public func openEdgeCount(of region: Set<Hex>, terrain: Terrain) -> Int {
         var count = 0
         for hex in region {
+            if lakes.contains(hex) {
+                // A new river can still flow into the lake from any open side.
+                count += hex.neighbors.filter { tiles[$0] == nil && isBuildable($0) }.count
+                continue
+            }
             guard let tile = tiles[hex] else { continue }
             for direction in 0..<6 where tile.edge(direction).counts(as: terrain) {
                 let next = hex.neighbor(direction)
@@ -164,8 +193,10 @@ public struct Board: Sendable {
         openSlots.remove(hex)
         for neighbor in hex.neighbors where tiles[neighbor] == nil {
             if mountains.contains(neighbor) {
-                // The fog lifts: a mountain next to a tile comes into view.
+                // The fog lifts: a mountain or lake next to a tile comes into view.
                 revealedMountains.insert(neighbor)
+            } else if lakes.contains(neighbor) {
+                revealedLakes.insert(neighbor)
             } else if isBuildable(neighbor) {
                 openSlots.insert(neighbor)
             }
@@ -182,8 +213,9 @@ public struct Board: Sendable {
         return true
     }
 
-    /// Lantern: lifts the fog off every mountain in the crater.
-    mutating func revealAllMountains() {
+    /// Lantern: lifts the fog off every mountain and lake in the crater.
+    mutating func revealAll() {
         revealedMountains = mountains
+        revealedLakes = lakes
     }
 }

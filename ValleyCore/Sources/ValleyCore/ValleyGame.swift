@@ -28,6 +28,8 @@ public struct Rules: Sendable {
     public var craterRadius = 0
     /// Peaks and ridges standing on the crater floor.
     public var peakCount = 0
+    /// Lakes hidden on the crater floor.
+    public var lakeCount = 0
     /// Every placement must match at least one neighboring edge.
     public var requiresMatch = false
     /// A tile that fits nowhere can be thrown away for a tile (Levels, Zen). Without
@@ -53,6 +55,8 @@ public struct Rules: Sendable {
         // See `coinEconomyReport` for how often a room-keeping bot gets stuck.
         rules.craterRadius = 4
         rules.peakCount = min(14, 5 + (max(1, valley) + 1) / 2)
+        // Two lakes to find, three from valley 6.
+        rules.lakeCount = valley >= 6 ? 3 : 2
         rules.requiresMatch = true
         rules.allowsDiscard = false
         return rules
@@ -173,6 +177,7 @@ public struct ValleyGame: Sendable {
                 seed: seed ^ 0xC4A7_E500,
                 radius: rules.craterRadius,
                 peakCount: rules.peakCount,
+                lakeCount: rules.lakeCount,
                 room: rules.startingTiles + 1
             )
             board = Board(starter: generator.makeCraterStarterTile(), crater: crater, requiresMatch: rules.requiresMatch)
@@ -276,12 +281,14 @@ public struct ValleyGame: Sendable {
         tilesLeft -= 1
         tilesPlaced += 1
 
-        // Judge the perfect fit after placing: that lifts the fog off neighboring mountains, which count as closed sides.
+        // Judge the placement again now that it's down: placing lifts the fog off its neighbors,
+        // so a newly seen lake can take a river (a match) and newly seen mountains close sides.
+        let settled = board.evaluate(tile, at: hex)
         let evaluation = PlacementEvaluation(
             isLegal: true,
-            matchingEdges: preview.matchingEdges,
-            clashingEdges: preview.clashingEdges,
-            isEnclosed: board.isEnclosed(hex)
+            matchingEdges: settled.matchingEdges,
+            clashingEdges: settled.clashingEdges,
+            isEnclosed: settled.isEnclosed
         )
         var earned = points(for: evaluation)
         var awarded = evaluation.isPerfect ? rules.perfectBonusTiles : 0
@@ -351,10 +358,10 @@ public struct ValleyGame: Sendable {
         return board.clearMountain(at: hex)
     }
 
-    /// Lantern power-up: shows every mountain in the crater.
+    /// Lantern power-up: shows every mountain and lake in the crater.
     public mutating func lightCrater() {
         guard canUsePowerUps else { return }
-        board.revealAllMountains()
+        board.revealAll()
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.

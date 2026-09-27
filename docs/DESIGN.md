@@ -21,7 +21,8 @@ The menu also restarts the current run. All tuning numbers live in `Rules` (`Val
 
 - Each valley is a fresh board with 36 tiles (6 × 6) and random quests, as in Zen. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
 - **The crater:** the valley floor is a hexagon of radius 4 (61 hexes) ringed by a mountain rim. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for all 36 tiles.
-- **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground or a mountain rising out of the fog. The rim appears as you reach the edge.
+- **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground, a mountain rising out of the fog, or a lake. The rim appears as you reach the edge.
+- **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
 - **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Undo, Swap, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
 - **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile of its target (a forest of 8 pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 300. Coin mode shows coins, never points.
@@ -35,16 +36,16 @@ The menu also restarts the current run. All tuning numbers live in `Rules` (`Val
 | Swap | Valley 2 | 80 | Trade the tile in hand for a freshly dealt one |
 | Wildcard | Valley 3 | 160 | The tile in hand becomes a patchwork that matches, and joins, any terrain |
 | Dynamite | Valley 4 | 120 | Blast a revealed mountain on the valley floor (not the rim), opening the ground |
-| Lantern | Valley 5 | 100 | Lift the fog off every mountain in the valley |
+| Lantern | Valley 5 | 100 | Lift the fog off every mountain and lake in the valley |
 
 - **End of a valley:** when the stack runs out, the card shows the coins earned. If a quest is within three tiles, it offers **+3 tiles for 200 coins** as well as the next valley. Bought tiles are a bonus: if one fits nowhere, the valley still counts as finished.
 - **Economy and difficulty:** the disabled `coinEconomyReport` test plays 300 valleys with a bot that chases quests while keeping room open (a stand-in for a planning player):
 
 | Valley | Coins per valley (+20 bonus) | Quests | Out of room |
 |---|---|---|---|
-| 1 | 111 | 3.1 | 11% |
-| 5 | 105 | 2.6 | 17% |
-| 10 | 97 | 2.1 | 24% |
+| 1 | 109 | 2.9 | 13% |
+| 5 | 103 | 2.5 | 17% |
+| 10 | 91 | 1.8 | 26% |
 
   A purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
@@ -82,7 +83,7 @@ One valley for a high score, starting with 30 tiles. Some tiles carry a quest, f
 
 ### Coin packs (planned)
 
-Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up.
+Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up. The starting wallet should let a new player try each early power-up a couple of times and get hooked, and a few free power-ups at the start (as the bus game does) are worth trying.
 
 ## Visual direction
 

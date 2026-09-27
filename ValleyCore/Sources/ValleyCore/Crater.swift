@@ -1,23 +1,33 @@
 /// A Coin mode valley's shape: a hexagonal floor ringed by a mountain rim, with
-/// single peaks and ridges standing on the floor. Tiles only go on open floor,
-/// and the generator always leaves room for the whole stack.
+/// single peaks, ridges and lakes on the floor. Tiles only go on open floor, and
+/// the generator always leaves room for the whole stack.
 public struct Crater: Hashable, Sendable {
     public let radius: Int
-    /// Every hex inside the rim, peaks included.
+    /// Every hex inside the rim, peaks and lakes included.
     public let floor: Set<Hex>
     /// The ring of mountains around the floor.
     public let rim: Set<Hex>
     /// Mountains standing on the floor.
     public let peaks: Set<Hex>
+    /// Lakes on the floor: rivers can flow into them, and land can border them.
+    public let lakes: Set<Hex>
+
+    public init(radius: Int, floor: Set<Hex>, rim: Set<Hex>, peaks: Set<Hex>, lakes: Set<Hex> = []) {
+        self.radius = radius
+        self.floor = floor
+        self.rim = rim
+        self.peaks = peaks
+        self.lakes = lakes
+    }
 
     public var mountains: Set<Hex> { rim.union(peaks) }
 
     /// Open floor connected to the starting tile.
-    public var reachableFloor: Int { Self.reachable(floor: floor, peaks: peaks) }
+    public var reachableFloor: Int { Self.reachable(floor: floor, blocked: peaks.union(lakes)) }
 
-    /// Builds a crater of `radius` with about `peakCount` peaks, keeping at least
-    /// `room` open floor cells connected to the start (the stack plus the starter).
-    public static func generate(seed: UInt64, radius: Int, peakCount: Int, room: Int) -> Crater {
+    /// Builds a crater of `radius` with about `peakCount` peaks and `lakeCount` lakes,
+    /// keeping at least `room` open floor cells connected to the start (the stack plus the starter).
+    public static func generate(seed: UInt64, radius: Int, peakCount: Int, lakeCount: Int = 0, room: Int) -> Crater {
         let floorList = Hex.within(radius: radius)
         let floor = Set(floorList)
         let rim = Set(Hex.within(radius: radius + 1)).subtracting(floor)
@@ -41,18 +51,29 @@ public struct Crater: Hashable, Sendable {
                 cell = cell.neighbor(direction)
             }
             let candidate = peaks.union(ridge)
-            if reachable(floor: floor, peaks: candidate) >= room {
+            if reachable(floor: floor, blocked: candidate) >= room {
                 peaks = candidate
             }
         }
-        return Crater(radius: radius, floor: floor, rim: rim, peaks: peaks)
+
+        // Lakes sit apart from each other, so each one is its own find.
+        var lakes: Set<Hex> = []
+        for _ in 0..<100 where lakes.count < lakeCount {
+            let cell = sites[Int.random(in: 0..<sites.count, using: &rng)]
+            guard !peaks.contains(cell), !protected.contains(cell), !lakes.contains(cell),
+                  !cell.neighbors.contains(where: lakes.contains) else { continue }
+            if reachable(floor: floor, blocked: peaks.union(lakes).union([cell])) >= room {
+                lakes.insert(cell)
+            }
+        }
+        return Crater(radius: radius, floor: floor, rim: rim, peaks: peaks, lakes: lakes)
     }
 
-    private static func reachable(floor: Set<Hex>, peaks: Set<Hex>) -> Int {
+    private static func reachable(floor: Set<Hex>, blocked: Set<Hex>) -> Int {
         var seen: Set<Hex> = [.origin]
         var pending = [Hex.origin]
         while let hex = pending.popLast() {
-            for next in hex.neighbors where floor.contains(next) && !peaks.contains(next) && !seen.contains(next) {
+            for next in hex.neighbors where floor.contains(next) && !blocked.contains(next) && !seen.contains(next) {
                 seen.insert(next)
                 pending.append(next)
             }

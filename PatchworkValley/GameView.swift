@@ -510,7 +510,7 @@ private struct OverlayCard: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
-        Text("Every tile must match a side. Mountains hide in the fog.")
+        Text("Every tile must match a side. Mountains and lakes hide in the fog, and rivers can flow into lakes.")
             .font(.footnote)
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
@@ -748,7 +748,10 @@ private struct PowerUpButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                 Label("\(powerUp.price)", systemImage: "centsign.circle.fill")
+                    .labelStyle(.titleAndIcon)
                     .font(.caption2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
@@ -786,7 +789,7 @@ extension PowerUp {
         case .swap: "Trade the tile in your hand for a fresh one."
         case .wildcard: "Turn the tile in your hand into a patch that matches anything."
         case .dynamite: "Blast a mountain you can see, opening the ground beneath it."
-        case .lantern: "Lift the fog to see every mountain in the valley."
+        case .lantern: "Lift the fog to see every mountain and lake in the valley."
         }
     }
 }

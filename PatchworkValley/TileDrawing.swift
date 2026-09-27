@@ -86,6 +86,24 @@ struct TileDrawing {
         return layers
     }
 
+    /// A lake hex: a meadow shore around a wide pond, with a glint of light on the water.
+    static func lakeLayers(geometry: HexGeometry) -> [Layer] {
+        let r = geometry.radius
+        let pondSize = r * 1.3
+        let pond = CGPath(ellipseIn: CGRect(x: -pondSize / 2, y: -pondSize / 2 * 0.9, width: pondSize, height: pondSize * 0.9), transform: nil)
+        let glint = CGMutablePath()
+        glint.addArc(center: .zero, radius: r * 0.42, startAngle: .pi * 0.55, endAngle: .pi * 0.85, clockwise: false)
+        let smallGlint = CGMutablePath()
+        smallGlint.addArc(center: CGPoint(x: r * 0.12, y: -r * 0.1), radius: r * 0.2, startAngle: .pi * 1.6, endAngle: .pi * 1.85, clockwise: false)
+        return [
+            Layer(path: geometry.outlinePath(), fill: Terrain.meadow.uiColor, stroke: Terrain.meadow.uiColor, lineWidth: 1),
+            Layer(path: pond, fill: Terrain.water.uiColor, stroke: Terrain.water.detailColor.withAlphaComponent(0.6), lineWidth: 2),
+            Layer(path: glint, stroke: Palette.snow.withAlphaComponent(0.7), lineWidth: 2.5, lineCap: .round),
+            Layer(path: smallGlint, stroke: Palette.snow.withAlphaComponent(0.55), lineWidth: 2, lineCap: .round),
+            Layer(path: geometry.outlinePath(inset: 0.75), stroke: Palette.rim, lineWidth: 1.5),
+        ]
+    }
+
     /// Wedge colors for a wildcard, one terrain per side.
     private static let wildPatchwork: [Terrain] = [.forest, .field, .village, .water, .meadow, .field]
 

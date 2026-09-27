@@ -274,7 +274,7 @@ final class GameModel {
         case .dynamite:
             return wallet >= powerUp.price && !board.clearableMountains.isEmpty
         case .lantern:
-            return wallet >= powerUp.price && board.revealedMountains != board.mountains
+            return wallet >= powerUp.price && (board.revealedMountains != board.mountains || board.revealedLakes != board.lakes)
         }
     }
 

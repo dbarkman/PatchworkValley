@@ -18,8 +18,10 @@ final class ValleyScene: SKScene {
 
     private var tileSprites: [Hex: SKSpriteNode] = [:]
     private var mountainSprites: [Hex: SKSpriteNode] = [:]
+    private var lakeSprites: [Hex: SKSpriteNode] = [:]
     private var peakTexture: SKTexture?
     private var rimTexture: SKTexture?
+    private var lakeTexture: SKTexture?
     private var slotSprites: [Hex: SKSpriteNode] = [:]
     private var badges: [Int: QuestBadge] = [:]
     private var tileTextures: [[Terrain]: SKTexture] = [:]
@@ -67,6 +69,7 @@ final class ValleyScene: SKScene {
         let game = model.game
         syncTiles(game.board, placement: placement, in: view)
         syncMountains(game.board, blasted: blasted, aiming: model.isAimingDynamite, in: view)
+        syncLakes(game.board, in: view)
         syncSlots(game, in: view)
         syncBadges(game, placement: placement)
         syncGhost(model, in: view)
@@ -149,8 +152,49 @@ final class ValleyScene: SKScene {
 
     private func mountainTexture(rim: Bool, in view: SKView) -> SKTexture {
         if let cached = rim ? rimTexture : peakTexture { return cached }
+        let texture = render(TileDrawing.mountainLayers(rim: rim, geometry: geometry), in: view)
+        if rim { rimTexture = texture } else { peakTexture = texture }
+        return texture
+    }
+
+    // MARK: - Lakes
+
+    private func syncLakes(_ board: Board, in view: SKView) {
+        for (hex, sprite) in lakeSprites where !board.revealedLakes.contains(hex) {
+            lakeSprites[hex] = nil
+            sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+        }
+        for hex in board.revealedLakes where lakeSprites[hex] == nil {
+            if lakeTexture == nil { lakeTexture = render(TileDrawing.lakeLayers(geometry: geometry), in: view) }
+            let sprite = SKSpriteNode(texture: lakeTexture, size: geometry.tileSize)
+            sprite.position = geometry.center(of: hex)
+            mountainLayer.addChild(sprite)
+            lakeSprites[hex] = sprite
+            shimmer(sprite)
+        }
+    }
+
+    /// A lake comes out of the fog with a ripple spreading across it.
+    private func shimmer(_ sprite: SKSpriteNode) {
+        sprite.alpha = 0
+        sprite.setScale(0.85)
+        sprite.run(.group([.fadeIn(withDuration: 0.25), .scale(to: 1, duration: 0.3)]))
+        let ripple = SKShapeNode(circleOfRadius: geometry.radius * 0.3)
+        ripple.strokeColor = Palette.snow.withAlphaComponent(0.8)
+        ripple.lineWidth = 2
+        ripple.fillColor = .clear
+        ripple.position = sprite.position
+        effectLayer.addChild(ripple)
+        ripple.run(.sequence([
+            .group([.scale(to: 2.2, duration: 0.7), .fadeOut(withDuration: 0.7)]),
+            .removeFromParent(),
+        ]))
+    }
+
+    /// Draws a list of layers into a texture, each layer at its own depth.
+    private func render(_ layers: [TileDrawing.Layer], in view: SKView) -> SKTexture {
         let art = SKNode()
-        for (depth, layer) in TileDrawing.mountainLayers(rim: rim, geometry: geometry).enumerated() {
+        for (depth, layer) in layers.enumerated() {
             let shape = SKShapeNode(path: layer.path)
             shape.zPosition = CGFloat(depth)
             shape.fillColor = layer.fill ?? .clear
@@ -159,9 +203,7 @@ final class ValleyScene: SKScene {
             shape.lineCap = layer.lineCap
             art.addChild(shape)
         }
-        let texture = view.texture(from: art, crop: geometry.bounds) ?? SKTexture()
-        if rim { rimTexture = texture } else { peakTexture = texture }
-        return texture
+        return view.texture(from: art, crop: geometry.bounds) ?? SKTexture()
     }
 
     /// A mountain pushes up out of the fog with a puff of dust.
@@ -387,18 +429,7 @@ final class ValleyScene: SKScene {
 
     private func texture(for edges: [Terrain], in view: SKView) -> SKTexture {
         if let cached = tileTextures[edges] { return cached }
-        let art = SKNode()
-        // The view ignores sibling order, so each layer gets an explicit depth.
-        for (depth, layer) in TileDrawing.layers(for: edges, geometry: geometry).enumerated() {
-            let shape = SKShapeNode(path: layer.path)
-            shape.zPosition = CGFloat(depth)
-            shape.fillColor = layer.fill ?? .clear
-            shape.strokeColor = layer.stroke ?? .clear
-            shape.lineWidth = layer.lineWidth
-            shape.lineCap = layer.lineCap
-            art.addChild(shape)
-        }
-        let texture = view.texture(from: art, crop: geometry.bounds) ?? SKTexture()
+        let texture = render(TileDrawing.layers(for: edges, geometry: geometry), in: view)
         tileTextures[edges] = texture
         return texture
     }

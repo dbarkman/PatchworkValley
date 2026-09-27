@@ -577,7 +577,7 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
     @Test func lanternRevealsEveryMountain() {
         let crater = Crater.generate(seed: 4, radius: 4, peakCount: 12, room: 37)
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
-        board.revealAllMountains()
+        board.revealAll()
         #expect(board.revealedMountains == crater.mountains)
     }
 
@@ -585,7 +585,7 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(2, -1), Hex(1, 1), Hex(0, 1)])
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
         board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
-        board.revealAllMountains()
+        board.revealAll()
         // East of the origin: neighbors are two mountains east, the origin, (1,-1), and two more mountains below.
         #expect(board.evaluate(tile("mmmmmm"), at: east).isPerfect)
     }
@@ -656,5 +656,89 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         let result = try #require(placed)
         #expect(result.evaluation.isPerfect)
         #expect(result.coins == game.rules.coinsPerPerfect + result.evaluation.matchingEdges.count * game.rules.coinsPerMatch)
+    }
+}
+
+@Suite struct LakeTests {
+    private let floor = Set(Hex.within(radius: 4))
+
+    @Test func lakesBlockPlacementAndAppearWhenATileTouchesThem() {
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [], lakes: [Hex(2, 0)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        #expect(board.revealedLakes.isEmpty)
+        board.place(tile("mmmmmm", id: 1), at: east)
+        #expect(board.revealedLakes == [Hex(2, 0)])
+        #expect(!board.openSlots.contains(Hex(2, 0)))
+    }
+
+    @Test func aRiverIntoASeenLakeMatchesAndLandMayBorderIt() {
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [], lakes: [Hex(2, -1)])
+        var board = Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true)
+        board.place(tile("ffffff", id: 1), at: Hex(1, -1))
+        #expect(board.revealedLakes.contains(Hex(2, -1)))
+        // East of the origin, edge 1 faces the lake at (2, -1).
+        let river = board.evaluate(tile("mwmfmm"), at: east)
+        #expect(river.isLegal)
+        #expect(river.matchingEdges.contains(1))
+        let land = board.evaluate(tile("mfmfmm"), at: east)
+        #expect(land.isLegal)
+        #expect(!land.matchingEdges.contains(1))
+        #expect(!land.clashingEdges.contains(1))
+    }
+
+    @Test func aLakeJoinsTheRiversThatFlowIntoIt() {
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [], lakes: [Hex(2, 0)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("wmmmmm", id: 1), at: east)          // river edge 0 flows east into the lake
+        board.place(tile("mmmmmm", id: 2), at: Hex(2, -1))
+        board.place(tile("mmmmwm", id: 3), at: Hex(3, -1))    // river edge 4 flows southwest into the lake
+        let rivers = board.region(of: .water, from: east)
+        #expect(rivers == [east, Hex(2, 0), Hex(3, -1)])
+        #expect(board.largestRegion(of: .water).count == 3)
+    }
+
+    @Test func aLakesOpenSidesKeepARiverQuestAlive() {
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [], lakes: [Hex(2, 0)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("wmmmmm", id: 1), at: east)
+        let rivers = board.region(of: .water, from: east)
+        #expect(board.openEdgeCount(of: rivers, terrain: .water) > 0)
+    }
+
+    @Test func previewIgnoresAHiddenLakeButPlacingRevealsAndCountsIt() throws {
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [], lakes: [Hex(2, 0)])
+        let board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        let preview = board.evaluate(tile("wmmmmm"), at: east)
+        #expect(!preview.matchingEdges.contains(0), "the lake is still in fog")
+
+        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("wmmmmm")], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.evaluation.matchingEdges.contains(0), "placing revealed the lake the river flows into")
+    }
+
+    @Test func lanternRevealsLakesToo() {
+        let crater = Crater.generate(seed: 6, radius: 4, peakCount: 8, lakeCount: 2, room: 37)
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.revealAll()
+        #expect(board.revealedLakes == crater.lakes)
+    }
+
+    @Test(arguments: 1...30)
+    func cratersPlaceLakesApartAndStillLeaveRoom(seed: UInt64) {
+        let crater = Crater.generate(seed: seed, radius: 4, peakCount: 14, lakeCount: 3, room: 37)
+        #expect(crater.lakes.count == 3)
+        #expect(crater.lakes.isDisjoint(with: crater.peaks))
+        #expect(crater.lakes.isDisjoint(with: Hex.origin.neighbors + [.origin]))
+        for lake in crater.lakes {
+            #expect(lake.neighbors.allSatisfy { !crater.lakes.contains($0) })
+        }
+        #expect(crater.reachableFloor >= 37)
+    }
+
+    @Test func coinValleysHideTwoLakesThenThree() {
+        #expect(Rules.coins(valley: 1).lakeCount == 2)
+        #expect(Rules.coins(valley: 6).lakeCount == 3)
+        #expect(ValleyGame(seed: 12, rules: .coins(valley: 1)).board.lakes.count == 2)
     }
 }

@@ -8,7 +8,7 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     case wildcard
     /// Blast a revealed mountain off the crater floor.
     case dynamite
-    /// Lift the fog off every mountain in the crater.
+    /// Lift the fog off every mountain and lake in the crater.
     case lantern
 
     public var id: Self { self }
