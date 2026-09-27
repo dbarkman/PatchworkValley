@@ -281,6 +281,18 @@ private let east = Hex(1, 0)
         }
     }
 
+    /// A terrain on one side of the quest tile can only grow one way, so its quests ask for less.
+    @Test func singleSideTerrainGetsSmallerQuests() {
+        var generator = TileGenerator(seed: 21, riverChance: 0, questChance: 1)
+        let plenty = Dictionary(uniqueKeysWithValues: Terrain.questable.map { ($0, 40) })
+        let oneForest = Tile(id: 60, edges: [.forest, .meadow, .meadow, .meadow, .meadow, .meadow])
+        let fullForest = Tile(id: 61, edges: Array(repeating: .forest, count: 6))
+        let thin = (0..<200).compactMap { _ in generator.assignQuest(to: oneForest, base: 6, supply: plenty).quest?.target }
+        let wide = (0..<200).compactMap { _ in generator.assignQuest(to: fullForest, base: 6, supply: plenty).quest?.target }
+        #expect(thin.max()! <= 6 + 3 - 2)
+        #expect(wide.max()! == 6 + 3)
+    }
+
     /// A quest never asks for more than the quest tile plus 70% (60% for rivers) of the matching tiles to come.
     @Test func questsFitTheTilesStillToCome() {
         var generator = TileGenerator(seed: 8, riverChance: 0.15, questChance: 1)
@@ -509,11 +521,22 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
 }
 
 @Suite struct CraterTests {
-    @Test func radiusFourCraterHas61FloorHexesAndA30HexRim() {
-        let crater = Crater.generate(seed: 1, radius: 4, peakCount: 12, room: 37)
-        #expect(crater.floor.count == 61)
-        #expect(crater.rim.count == 30)
+    @Test(arguments: 1...30)
+    func cratersHaveAnIrregularFloorRingedByTheRim(seed: UInt64) {
+        let crater = Crater.generate(seed: seed, radius: 4, peakCount: 12, room: 37)
+        #expect((45...100).contains(crater.floor.count))
         #expect(crater.floor.isDisjoint(with: crater.rim))
+        #expect(crater.floor.isSuperset(of: [.origin] + Hex.origin.neighbors))
+        // Every floor hex is bordered only by floor or rim: no gaps in the wall.
+        for hex in crater.floor {
+            #expect(hex.neighbors.allSatisfy { crater.floor.contains($0) || crater.rim.contains($0) })
+        }
+    }
+
+    @Test func craterShapesVary() {
+        let shapes = Set((1...10).map { Crater.generate(seed: $0, radius: 4, peakCount: 0, room: 37).floor })
+        #expect(shapes.count == 10)
+        #expect(shapes.contains { $0 != Set(Hex.within(radius: 4)) })
     }
 
     @Test(arguments: 1...40)
@@ -547,7 +570,8 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
     }
 
     @Test func tilesStayInsideTheRim() {
-        let crater = Crater.generate(seed: 2, radius: 4, peakCount: 0, room: 37)
+        let floor = Set(Hex.within(radius: 4))
+        let crater = Crater(radius: 4, floor: floor, rim: Set(Hex.within(radius: 5)).subtracting(floor), peaks: [])
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
         for q in 1...4 { board.place(tile("mmmmmm", id: q), at: Hex(q, 0)) }
         #expect(!board.openSlots.contains(Hex(5, 0)))
@@ -592,7 +616,7 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
 
     @Test func coinValleyStartsInACraterWithRoomToPlay() {
         let game = ValleyGame(seed: 11, rules: .coins(valley: 1))
-        #expect(game.board.floor?.count == 61)
+        #expect((45...100).contains(game.board.floor?.count ?? 0))
         #expect(!game.board.mountains.isEmpty)
         #expect(game.outcome == .playing)
     }

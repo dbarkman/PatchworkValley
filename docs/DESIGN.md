@@ -20,14 +20,14 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 ## Coin mode
 
 - Each valley is a fresh board with 36 tiles (6 × 6) and random quests, as in Zen. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
-- **The crater:** the valley floor is a hexagon of radius 4 (61 hexes) ringed by a mountain rim. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for all 36 tiles.
+- **The crater:** the valley floor is an irregular shape, about 4 steps across from the start on average, with an edge that wanders in and out (bays, points, bulges), so every valley looks different. It holds about 50–80 hexes and is ringed by a mountain rim. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for all 36 tiles.
 - **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground, a mountain rising out of the fog, or a lake. The rim appears as you reach the edge.
 - **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
 - **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Undo, Swap, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
 - **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile of its target (a forest of 8 pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 300. Coin mode shows coins, never points.
 - **Valleys are numbered** and quests grow by one every three valleys, up to six bigger than valley 1's. Progress saves the moment a valley's stack is finished.
-- **Quests always fit the stack:** the whole stack is dealt when the valley starts, and a quest never asks for more than its own tile plus 70% of the matching tiles still to come (60% for rivers, which are harder to join). A river quest of 4 can't appear when only two river tiles remain.
+- **Quests always fit the stack:** the whole stack is dealt when the valley starts, and a quest never asks for more than its own tile plus 70% of the matching tiles still to come (60% for rivers, which are harder to join). A river quest of 4 can't appear when only two river tiles remain. A terrain showing on just one side of the quest tile asks for 2 less, since it can only grow one way, and quests favor terrains that cover more of the tile.
 - **Power-ups** are introduced one per valley on the valley's opening card, and bought with coins from the bar under the tile tray:
 
 | Power-up | Introduced | Price | Effect |
@@ -43,9 +43,9 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 | Valley | Coins per valley (+20 bonus) | Quests | Out of room |
 |---|---|---|---|
-| 1 | 109 | 2.9 | 13% |
-| 5 | 103 | 2.5 | 17% |
-| 10 | 91 | 1.8 | 26% |
+| 1 | 114 | 3.3 | 11% |
+| 5 | 112 | 3.1 | 12% |
+| 10 | 100 | 2.1 | 16% |
 
   A purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).

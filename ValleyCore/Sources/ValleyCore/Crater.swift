@@ -1,7 +1,10 @@
-/// A Coin mode valley's shape: a hexagonal floor ringed by a mountain rim, with
+import Foundation
+
+/// A Coin mode valley's shape: an irregular floor ringed by a mountain rim, with
 /// single peaks, ridges and lakes on the floor. Tiles only go on open floor, and
 /// the generator always leaves room for the whole stack.
 public struct Crater: Hashable, Sendable {
+    /// The floor's average radius, in hex steps. The outline wanders about two steps either way.
     public let radius: Int
     /// Every hex inside the rim, peaks and lakes included.
     public let floor: Set<Hex>
@@ -28,13 +31,13 @@ public struct Crater: Hashable, Sendable {
     /// Builds a crater of `radius` with about `peakCount` peaks and `lakeCount` lakes,
     /// keeping at least `room` open floor cells connected to the start (the stack plus the starter).
     public static func generate(seed: UInt64, radius: Int, peakCount: Int, lakeCount: Int = 0, room: Int) -> Crater {
-        let floorList = Hex.within(radius: radius)
+        var rng = SplitMix64(seed: seed)
+        let floorList = outline(radius: radius, room: room, rng: &rng)
         let floor = Set(floorList)
-        let rim = Set(Hex.within(radius: radius + 1)).subtracting(floor)
+        let rim = Set(floorList.flatMap(\.neighbors)).subtracting(floor)
         // The start and its neighbors stay open, so the first placements always have somewhere to go.
         let protected = Set([Hex.origin] + Hex.origin.neighbors)
         let sites = floorList.filter { $0.distance(to: .origin) >= 2 }
-        var rng = SplitMix64(seed: seed)
         var peaks: Set<Hex> = []
 
         for _ in 0..<200 where peaks.count < peakCount {
@@ -69,7 +72,36 @@ public struct Crater: Hashable, Sendable {
         return Crater(radius: radius, floor: floor, rim: rim, peaks: peaks, lakes: lakes)
     }
 
+    /// An organic floor: its edge wanders in and out around the circle, following a
+    /// few overlapping waves, so every crater has its own bays and points. Returned in a
+    /// fixed order, connected, and always holding the start area and at least `room` hexes.
+    private static func outline(radius: Int, room: Int, rng: inout SplitMix64) -> [Hex] {
+        let candidates = Hex.within(radius: radius + 2)
+        while true {
+            let waves = (2...4).map { frequency in
+                (amplitude: Double.random(in: 0.2...0.6, using: &rng),
+                 frequency: Double(frequency),
+                 phase: Double.random(in: 0..<(2 * .pi), using: &rng))
+            }
+            let floor = candidates.filter { hex in
+                // Position in hex steps: neighbors are one step apart.
+                let x = Double(hex.q) + Double(hex.r) / 2
+                let y = -Double(hex.r) * 3.squareRoot() / 2
+                let reach = Double(radius) + 0.3 + waves.reduce(0) { $0 + $1.amplitude * sin($1.frequency * atan2(y, x) + $1.phase) }
+                return (x * x + y * y).squareRoot() <= reach
+            }
+            // Keep only floor joined to the start, in case the edge pinched off a sliver.
+            let connected = reachableSet(floor: Set(floor), blocked: [])
+            let kept = floor.filter(connected.contains)
+            if kept.count >= room + 8 { return kept }
+        }
+    }
+
     private static func reachable(floor: Set<Hex>, blocked: Set<Hex>) -> Int {
+        reachableSet(floor: floor, blocked: blocked).count
+    }
+
+    private static func reachableSet(floor: Set<Hex>, blocked: Set<Hex>) -> Set<Hex> {
         var seen: Set<Hex> = [.origin]
         var pending = [Hex.origin]
         while let hex = pending.popLast() {
@@ -78,6 +110,6 @@ public struct Crater: Hashable, Sendable {
                 pending.append(next)
             }
         }
-        return seen.count
+        return seen
     }
 }

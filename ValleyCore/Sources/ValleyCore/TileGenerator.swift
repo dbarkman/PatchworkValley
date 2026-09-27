@@ -60,19 +60,23 @@ public struct TileGenerator: Sendable {
     /// `supply` counts the upcoming tiles that carry each terrain.
     public mutating func assignQuest(to tile: Tile, base: Int, supply: [Terrain: Int]) -> Tile {
         guard chance(questChance) else { return tile }
-        var options: [QuestSpec] = []
+        var options: [(QuestSpec, Int)] = []
         for terrain in Terrain.questable where tile.contains(terrain) {
-            let wanted = terrain == .water
+            let sides = tile.edges.filter { $0 == terrain }.count
+            var wanted = terrain == .water
                 ? max(3, base / 2 + Int.random(in: 0...2, using: &rng))
-                : base + Int.random(in: 0...4, using: &rng)
+                : base + Int.random(in: 0...3, using: &rng)
+            // A terrain on a single side can only grow one way from here, so it asks for less.
+            if sides == 1 { wanted -= 2 }
             // The quest tile itself, plus most of the matching tiles still to come.
             let share = terrain == .water ? 0.6 : 0.7
             let reachable = 1 + Int(Double(supply[terrain, default: 0]) * share)
             let target = min(wanted, reachable)
-            if target >= 3 { options.append(QuestSpec(terrain: terrain, target: target)) }
+            // Terrains covering more of the tile are likelier to get the quest.
+            if target >= 3 { options.append((QuestSpec(terrain: terrain, target: target), sides)) }
         }
-        guard let quest = options.randomElement(using: &rng) else { return tile }
-        return Tile(id: tile.id, edges: tile.edges, quest: quest)
+        guard !options.isEmpty else { return tile }
+        return Tile(id: tile.id, edges: tile.edges, quest: pick(options))
     }
 
     /// A crater's first tile: all four land terrains in bands, so the first tile

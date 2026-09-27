@@ -51,7 +51,7 @@ public struct Rules: Sendable {
         rules.questCoinsPerTile = 2
         rules.questTargetBonus = min(6, (max(1, valley) - 1) / 3)
         rules.continueTiles = 3
-        // A 61-hex crater: 6 peaks in valley 1, one more every two valleys up to 14.
+        // An irregular crater about 4 steps across: 6 peaks in valley 1, one more every two valleys up to 14.
         // See `coinEconomyReport` for how often a room-keeping bot gets stuck.
         rules.craterRadius = 4
         rules.peakCount = min(14, 5 + (max(1, valley) + 1) / 2)
