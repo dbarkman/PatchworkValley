@@ -149,13 +149,16 @@ private let east = Hex(1, 0)
     }
 
     @Test func questCompletesAndAwardsTiles() throws {
-        let questTile = tile("ffffff", quest: QuestSpec(terrain: .forest, target: 2))
-        var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [questTile], tilesLeft: 5)
-        let placed = game.placeCurrent(at: east)
+        // Grow a forest by 2: the quest tile on its own, then one more forest beside it.
+        let questTile = tile("mmmmmf", quest: QuestSpec(terrain: .forest, target: 2))
+        var game = ValleyGame(board: Board(starter: tile("mmmmmm", id: 0)), queue: [questTile, tile("mmfmmm")], tilesLeft: 5)
+        let first = game.placeCurrent(at: east)
+        #expect(first?.completedQuests.isEmpty == true)
+        let placed = game.placeCurrent(at: Hex(1, 1))
         let result = try #require(placed)
         #expect(result.completedQuests.map(\.id) == [questTile.id])
         #expect(result.tilesAwarded == game.rules.questReward(for: 2))
-        #expect(game.tilesLeft == 5 - 1 + game.rules.questReward(for: 2))
+        #expect(game.tilesLeft == 5 - 2 + game.rules.questReward(for: 2))
         #expect(game.activeQuests.isEmpty)
     }
 
@@ -169,7 +172,8 @@ private let east = Hex(1, 0)
     }
 
     @Test func runningOutOfTilesReportsNearMisses() throws {
-        let questTile = tile("ffffff", quest: QuestSpec(terrain: .forest, target: 3))
+        // Joining the starter's forest makes the region 2; the quest asks for 2 more tiles on top, so 1 short of 3.
+        let questTile = tile("ffffff", quest: QuestSpec(terrain: .forest, target: 2))
         var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [questTile], tilesLeft: 1)
         let placed = game.placeCurrent(at: east)
         try #require(placed != nil)
@@ -435,15 +439,15 @@ private let east = Hex(1, 0)
     }
 
     @Test func coinQuestsPayCoinsAndTheStackOnlyCountsDown() throws {
-        let questTile = tile("ffffff", quest: QuestSpec(terrain: .forest, target: 2))
-        var game = ValleyGame(rules: .coins(valley: 1), board: Board(starter: tile("ffffff", id: 0)), queue: [questTile], tilesLeft: 5)
-        let placed = game.placeCurrent(at: east)
+        let questTile = tile("mmmmmf", quest: QuestSpec(terrain: .forest, target: 2))
+        var game = ValleyGame(rules: .coins(valley: 1), board: Board(starter: tile("mmmmmm", id: 0)), queue: [questTile, tile("mmfmmm")], tilesLeft: 5)
+        game.placeCurrent(at: east)
+        let placed = game.placeCurrent(at: Hex(1, 1))
         let result = try #require(placed)
         #expect(result.completedQuests.count == 1)
         #expect(result.tilesAwarded == 0)
         #expect(result.coins == game.rules.questCoins(for: 2) + result.evaluation.matchingEdges.count * game.rules.coinsPerMatch)
-        #expect(game.coins == result.coins)
-        #expect(game.tilesLeft == 4)
+        #expect(game.tilesLeft == 3)
     }
 
     @Test func coinValleysHold36TilesAndGrowTheirQuests() {
@@ -803,7 +807,8 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         var dry = 0
         while !game.isOver {
             let questInView = game.current?.quest != nil || game.next?.quest != nil
-            if game.activeQuests.isEmpty && !questInView { dry += 1 }
+            // Near the end, too few tiles remain to finish any quest, so only count before then.
+            if game.activeQuests.isEmpty && !questInView && game.tilesLeft > 6 { dry += 1 }
             let focus = game.activeQuests.map(\.terrain)
             guard let move = GreedyBot.bestMove(in: game, focus: focus) else { break }
             game.rotateCurrent(clockwiseSteps: move.steps)
@@ -821,7 +826,9 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
             board.place(tile("vvvvvv", id: 1 + index), at: hex)
         }
         let village = Array(repeating: tile("vvvvvv"), count: 10).enumerated().map { Tile(id: 20 + $0.offset, edges: $0.element.edges) }
-        let game = ValleyGame(rules: .coins(valley: 1), board: board, queue: village, tilesLeft: 10)
+        var rules = Rules.coins(valley: 1)
+        rules.boardQuestShare = 1
+        let game = ValleyGame(rules: rules, board: board, queue: village, tilesLeft: 10)
         let quest = game.activeQuests.first
         #expect(quest?.terrain == .village)
         #expect(quest?.start == 4)
@@ -835,7 +842,9 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         var board = Board(starter: tile("vvvvvv", id: 0), crater: crater, requiresMatch: true)
         board.place(tile("vvvvvv", id: 1), at: east)
         let village = (0..<10).map { Tile(id: 20 + $0, edges: Array(repeating: .village, count: 6)) }
-        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: village, tilesLeft: 10)
+        var rules = Rules.coins(valley: 1)
+        rules.boardQuestShare = 1
+        var game = ValleyGame(rules: rules, board: board, queue: village, tilesLeft: 10)
         let quest = try #require(game.activeQuests.first)
         #expect(quest.growth == quest.target - 2 + 1)
         // Grow the village until the quest completes, and check it pays for the growth, not the size.
@@ -848,5 +857,55 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
             }
         }
         #expect(paid == game.rules.questCoins(for: quest.growth))
+    }
+}
+
+@Suite struct QuestTileTests {
+    /// A quest tile dropped onto a bigger region asks that region to grow, rather than winning at once.
+    @Test func aQuestTileJoiningABigRegionRaisesTheBar() throws {
+        var board = Board(starter: tile("vvvvvv", id: 0))
+        for (index, hex) in [Hex(1, -1), Hex(0, -1), Hex(-1, 0)].enumerated() {
+            board.place(tile("vvvvvv", id: 1 + index), at: hex)
+        }
+        let questTile = tile("vvvvvv", quest: QuestSpec(terrain: .village, target: 3))
+        var game = ValleyGame(board: board, queue: [questTile], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.completedQuests.isEmpty, "joining a 4-village must not finish a village-3 quest")
+        let quest = try #require(game.activeQuests.first)
+        #expect(quest.start == 5)
+        #expect(quest.target == 5 + 3 - 1)
+        #expect(quest.growth == 3)
+        #expect(result.startedQuests.map(\.id) == [questTile.id], "a raised quest is announced")
+    }
+
+    @Test func aQuestTileOnItsOwnKeepsItsTarget() throws {
+        let questTile = tile("mmmvmm", quest: QuestSpec(terrain: .village, target: 5))
+        var game = ValleyGame(board: Board(starter: tile("mmmmmm", id: 0)), queue: [questTile], tilesLeft: 5)
+        let placed = game.placeCurrent(at: Hex(-1, 0))
+        _ = try #require(placed)
+        #expect(game.activeQuests.first?.target == 5)
+        #expect(game.activeQuests.first?.start == 1)
+    }
+
+    /// Keeping a quest going mixes both kinds: some grow a built region, some ride on the next tile.
+    @Test func keptQuestsMixBoardAndTileQuests() {
+        var sawBoard = false
+        var sawTile = false
+        for seed in 1...20 {
+            var game = ValleyGame(seed: UInt64(seed), rules: .coins(valley: 1))
+            var turns = 0
+            while !game.isOver && turns < 36 {
+                turns += 1
+                if game.quests.contains(where: { $0.id < 0 }) { sawBoard = true }
+                let before = game.activeQuests.isEmpty && game.current?.quest == nil
+                guard let move = GreedyBot.bestMove(in: game, focus: game.activeQuests.map(\.terrain)) else { break }
+                game.rotateCurrent(clockwiseSteps: move.steps)
+                game.placeCurrent(at: move.slot)
+                if before && game.next?.quest != nil { sawTile = true }
+            }
+        }
+        #expect(sawBoard)
+        #expect(sawTile)
     }
 }

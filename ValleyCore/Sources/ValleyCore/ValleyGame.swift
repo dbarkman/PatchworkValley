@@ -27,6 +27,9 @@ public struct Rules: Sendable {
     /// Keep at least one quest going: when none is active or on its way, set one on a
     /// region already built (favoring big ones), or else on the next tile dealt.
     public var alwaysQuest = false
+    /// When the game sets a quest to keep one going, the share that grow a region already
+    /// built; the rest go on the next tile dealt.
+    public var boardQuestShare = 0.5
     /// Coin mode's crater radius. Zero means the open plane.
     public var craterRadius = 0
     /// How far the crater's outline wanders, from 0 (round) to 1 (ragged).
@@ -322,8 +325,15 @@ public struct ValleyGame: Sendable {
         var awarded = evaluation.isPerfect ? rules.perfectBonusTiles : 0
         var coinsEarned = coins(for: evaluation)
 
+        var started: [Quest] = []
         if let spec = tile.quest {
-            quests.append(Quest(id: tile.id, terrain: spec.terrain, target: spec.target, anchor: hex))
+            // A quest tile asks its region to grow by the same amount wherever it lands: joining a
+            // big region raises the bar instead of winning outright.
+            let joined = board.region(of: spec.terrain, from: hex).count
+            var quest = Quest(id: tile.id, terrain: spec.terrain, target: joined + spec.target - 1, anchor: hex, progress: joined)
+            quest.start = joined
+            quests.append(quest)
+            if joined > 1 { started.append(quest) }
         }
 
         var completed: [Quest] = []
@@ -334,7 +344,7 @@ public struct ValleyGame: Sendable {
             quests[index].progress = region.count
             if region.count >= quest.target {
                 quests[index].status = .completed
-                if rules.questsRewardTiles { awarded += rules.questReward(for: quest.target) }
+                if rules.questsRewardTiles { awarded += rules.questReward(for: quest.growth) }
                 earned += rules.questPoints(for: quest.target)
                 coinsEarned += rules.questCoins(for: quest.growth)
                 completed.append(quests[index])
@@ -352,7 +362,7 @@ public struct ValleyGame: Sendable {
         score += earned + bonus
         coins += coinsEarned
         refillQueue()
-        let started = keepAQuestGoing()
+        started += keepAQuestGoing()
 
         return PlacementResult(
             hex: hex,
@@ -442,12 +452,30 @@ public struct ValleyGame: Sendable {
     private mutating func keepAQuestGoing() -> [Quest] {
         guard rules.alwaysQuest, outcome == .playing, activeQuests.isEmpty,
               !queue.contains(where: { $0.quest != nil }) else { return [] }
-        guard let quest = makeBoardQuest() else {
-            questOwed = true
-            return []
+        // Sometimes grow what's been built, sometimes a fresh quest on the tile coming up;
+        // if one kind isn't possible, try the other.
+        let boardFirst = generator.roll(1...100) <= Int(rules.boardQuestShare * 100)
+        if boardFirst, let quest = makeBoardQuest() {
+            quests.append(quest)
+            return [quest]
         }
-        quests.append(quest)
-        return [quest]
+        if giveUpcomingTileAQuest() { return [] }
+        if !boardFirst, let quest = makeBoardQuest() {
+            quests.append(quest)
+            return [quest]
+        }
+        questOwed = true
+        return []
+    }
+
+    /// Puts a quest on the last visible tile (the next one, or the one in hand at the end of
+    /// the stack), so it shows up right away. False when that tile can't take one.
+    private mutating func giveUpcomingTileAQuest() -> Bool {
+        guard let index = queue.indices.last else { return false }
+        let tile = generator.assignQuest(to: queue[index], base: rules.questBase(afterPlacing: tilesPlaced), supply: supply(), force: true)
+        guard tile.quest != nil else { return false }
+        queue[index] = tile
+        return true
     }
 
     /// A quest to grow one of the regions on the board by a few tiles, if any can grow and
