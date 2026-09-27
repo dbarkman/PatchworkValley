@@ -127,6 +127,8 @@ public struct Quest: Hashable, Sendable, Identifiable {
     public internal(set) var status = Status.active
     /// The region's size when the quest began: 1 for a quest tile, the region's size for a board quest.
     public internal(set) var start = 1
+    /// How many tiles had been placed when the quest was completed or closed off; nil while it's going.
+    public internal(set) var endedAfter: Int?
 
     public var remaining: Int { max(0, target - progress) }
     /// Tiles the quest asked for, counting its first one; rewards follow this, not the region's full size.
@@ -271,6 +273,11 @@ public struct ValleyGame: Sendable {
     public var next: Tile? { queue.dropFirst().first }
     public var activeQuests: [Quest] { quests.filter { $0.status == .active } }
 
+    /// Quests a finished run ends without: those still going, and those its last tile closed off.
+    public var unfinishedQuests: [Quest] {
+        quests.filter { $0.status == .active || ($0.status == .failed && $0.endedAfter == tilesPlaced) }
+    }
+
     public var outcome: Outcome {
         if !goals.isEmpty && goals.allSatisfy(\.isMet) { return .won }
         if tilesLeft == 0 { return .outOfTiles }
@@ -368,12 +375,14 @@ public struct ValleyGame: Sendable {
             quests[index].progress = region.count
             if region.count >= quest.target {
                 quests[index].status = .completed
+                quests[index].endedAfter = tilesPlaced
                 if rules.questsRewardTiles { awarded += rules.questReward(for: quest.growth) }
                 earned += rules.questPoints(for: quest.target)
                 coinsEarned += rules.questCoins(for: quest.growth)
                 completed.append(quests[index])
             } else if board.openEdgeCount(of: region, terrain: quest.terrain) == 0 {
                 quests[index].status = .failed
+                quests[index].endedAfter = tilesPlaced
                 failed.append(quests[index])
             }
         }

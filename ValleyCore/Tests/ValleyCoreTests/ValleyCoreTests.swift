@@ -1111,3 +1111,35 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(result.completedQuests.count == 1, "the wildcard bridged the two forests")
     }
 }
+
+@Suite struct QuestEndingTests {
+    @Test func aQuestClosedOffByTheLastTileIsListedAsUnfinished() throws {
+        // A forest edge facing the meadow starter is closed from the start: the quest fails on arrival.
+        let quest = tile("fmmmmm", id: 1, quest: QuestSpec(terrain: .forest, target: 3))
+        var game = ValleyGame(board: Board(starter: tile("mmmmmm", id: 0)), queue: [quest, tile("mmmmmm", id: 2)], tilesLeft: 10)
+        let placed = game.placeCurrent(at: Hex(-1, 0))
+        let result = try #require(placed)
+        #expect(result.failedQuests.map(\.id) == [1])
+        #expect(game.unfinishedQuests.map(\.id) == [1])
+        #expect(game.unfinishedQuests.first?.status == .failed)
+        #expect(game.unfinishedQuests.first?.endedAfter == 1)
+
+        _ = game.placeCurrent(at: east)
+        #expect(game.unfinishedQuests.isEmpty, "a quest closed off earlier isn't the valley's last word")
+    }
+
+    @Test func questsStillGoingAreUnfinishedAndCompletedOnesAreNot() throws {
+        let going = tile("ffffff", id: 1, quest: QuestSpec(terrain: .forest, target: 5))
+        var game = ValleyGame(board: Board(starter: tile("mmmmmm", id: 0)), queue: [going], tilesLeft: 10)
+        _ = game.placeCurrent(at: east)
+        #expect(game.unfinishedQuests.map(\.id) == [1])
+        #expect(game.unfinishedQuests.first?.endedAfter == nil)
+
+        let done = tile("ffffff", id: 1, quest: QuestSpec(terrain: .forest, target: 2))
+        var finished = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [done, tile("ffffff", id: 2)], tilesLeft: 10)
+        _ = finished.placeCurrent(at: east)
+        _ = finished.placeCurrent(at: Hex(2, 0))
+        #expect(finished.quests.first?.status == .completed)
+        #expect(finished.unfinishedQuests.isEmpty)
+    }
+}

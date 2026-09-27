@@ -138,15 +138,15 @@ private struct TopBar: View {
             }
         }
         .animation(.snappy, value: model.game.goals)
-        .animation(.snappy, value: model.game.activeQuests)
+        .animation(.snappy, value: model.questChips)
     }
 
     @ViewBuilder private var objectives: some View {
         if model.mode == .levels {
             if !model.hasFinishedAllLevels { goals }
-        } else if !model.game.activeQuests.isEmpty {
+        } else if !model.questChips.isEmpty {
             HStack(spacing: 8) {
-                ForEach(model.game.activeQuests) { quest in
+                ForEach(model.questChips) { quest in
                     QuestChip(quest: quest)
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -374,6 +374,7 @@ private struct GoalChip: View {
     }
 }
 
+/// A quest's progress. When it ends, it turns green with a check (done) or red with a cross (closed off) before leaving.
 private struct QuestChip: View {
     let quest: Quest
 
@@ -383,14 +384,77 @@ private struct QuestChip: View {
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(quest.progress)))
         } icon: {
-            Image(systemName: quest.terrain.symbolName).foregroundStyle(quest.terrain.color)
+            Image(systemName: symbol)
+                .foregroundStyle(iconColor)
+                .contentTransition(.symbolEffect(.replace))
         }
         .font(.subheadline.weight(.semibold))
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
+        .background {
+            Capsule()
+                .fill(.regularMaterial)
+                .overlay(Capsule().fill(tint.opacity(0.3)))
+        }
         .animation(.snappy, value: quest.progress)
-        .accessibilityLabel("\(quest.terrain.displayName) quest, \(quest.progress) of \(quest.target)")
+        .animation(.snappy, value: quest.status)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var symbol: String {
+        switch quest.status {
+        case .active: quest.terrain.symbolName
+        case .completed: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch quest.status {
+        case .active: quest.terrain.color
+        case .completed: .green
+        case .failed: .red
+        }
+    }
+
+    private var tint: Color {
+        switch quest.status {
+        case .active: .clear
+        case .completed: .green
+        case .failed: .red
+        }
+    }
+
+    private var accessibilityText: String {
+        let name = quest.terrain.displayName
+        return switch quest.status {
+        case .active: "\(name) quest, \(quest.progress) of \(quest.target)"
+        case .completed: "\(name) quest complete"
+        case .failed: "\(name) quest closed off at \(quest.progress) of \(quest.target)"
+        }
+    }
+}
+
+/// A quest a finished valley ended without: how far it got, and whether the last tile closed it off.
+private struct QuestOutcomeRow: View {
+    let quest: Quest
+
+    var body: some View {
+        Label {
+            Text(text).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: quest.status == .failed ? "xmark.circle.fill" : quest.terrain.symbolName)
+                .foregroundStyle(quest.status == .failed ? .red : quest.terrain.color)
+                .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+        }
+        .font(.subheadline.weight(.semibold))
+    }
+
+    private var text: String {
+        let name = quest.terrain.displayName
+        return quest.status == .failed
+            ? "\(name) closed off at \(quest.progress) of \(quest.target)"
+            : "\(name) \(quest.progress) of \(quest.target) · \(quest.remaining) short"
     }
 }
 
@@ -617,8 +681,17 @@ private struct OverlayCard: View {
             .font(.title3.weight(.semibold))
         Text("+\(CoinEconomy.valleyBonus) finishing bonus added")
             .foregroundStyle(.secondary)
+        // Quests the valley ends without; +3 tiles is offered when one is within three tiles.
+        let unfinished = model.game.unfinishedQuests
+        if !unfinished.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(unfinished) { quest in
+                    QuestOutcomeRow(quest: quest)
+                }
+            }
+            .padding(.vertical, 4)
+        }
         if model.offersMoreTiles {
-            nearMiss
             continueButton
         }
         Button {

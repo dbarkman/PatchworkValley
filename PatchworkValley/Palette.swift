@@ -20,6 +20,8 @@ nonisolated enum Palette {
     static let dust = UIColor(red: 0.78, green: 0.72, blue: 0.62, alpha: 0.8)
     static let blast = UIColor(red: 1.0, green: 0.82, blue: 0.45, alpha: 0.9)
     static let coin = UIColor(red: 1.0, green: 0.84, blue: 0.2, alpha: 1)
+    static let questDone = UIColor(red: 0.30, green: 0.69, blue: 0.31, alpha: 1)
+    static let questClosed = UIColor(red: 0.85, green: 0.25, blue: 0.22, alpha: 1)
 }
 
 nonisolated extension Terrain {

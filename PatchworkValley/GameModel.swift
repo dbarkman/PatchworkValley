@@ -84,6 +84,8 @@ final class GameModel {
     private(set) var toast: Toast?
     private(set) var tileGain: Gain?
     private(set) var coinGain: Gain?
+    /// Quests that just ended, kept on their chips for a moment to show how they ended.
+    private(set) var endedQuestIDs: Set<Int> = []
     /// Looking over a finished valley, card put away, every mountain and lake in view.
     private(set) var isViewingValley = false
     /// The finished valley has been looked over, so it stays in full view behind its card.
@@ -173,6 +175,11 @@ final class GameModel {
         mode == .coins && hasRevealedValley && game.outcome == .outOfTiles ? game.board.lit() : game.board
     }
 
+    /// The quest chips: every quest going, plus ones that just completed or closed off, in the order they began.
+    var questChips: [Quest] {
+        game.quests.filter { $0.status == .active || endedQuestIDs.contains($0.id) }
+    }
+
     var ghostEvaluation: PlacementEvaluation? {
         selectedSlot.flatMap { game.evaluateCurrent(at: $0) }
     }
@@ -222,6 +229,7 @@ final class GameModel {
         }
         resetSelection()
         if result.tilesAwarded > 0 { showTileGain(result.tilesAwarded) }
+        showQuestEndings(result.completedQuests + result.failedQuests)
         if mode == .coins {
             undoPoint = UndoPoint(game: before, coins: result.coins)
             if result.coins > 0 {
@@ -619,6 +627,18 @@ final class GameModel {
         toast = nil
         tileGain = nil
         coinGain = nil
+        endedQuestIDs = []
+    }
+
+    /// Keeps the chips of quests that just ended on screen, marked done or closed off, then lets them go.
+    private func showQuestEndings(_ quests: [Quest]) {
+        let ids = Set(quests.map(\.id))
+        guard !ids.isEmpty else { return }
+        endedQuestIDs.formUnion(ids)
+        Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            endedQuestIDs.subtract(ids)
+        }
     }
 
     private func turn(_ steps: Int) {

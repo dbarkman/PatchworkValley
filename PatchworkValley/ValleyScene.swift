@@ -618,10 +618,11 @@ private final class GhostNode: SKNode {
 /// A quest marker on the board: the terrain's color with the tiles still needed.
 private final class QuestBadge: SKNode {
     private let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+    private let disc: SKShapeNode
 
     init(quest: Quest, radius: CGFloat) {
+        disc = SKShapeNode(circleOfRadius: radius)
         super.init()
-        let disc = SKShapeNode(circleOfRadius: radius)
         disc.fillColor = quest.terrain == .meadow ? .darkGray : quest.terrain.detailColor
         disc.strokeColor = .white
         disc.lineWidth = 2.5
@@ -653,10 +654,14 @@ private final class QuestBadge: SKNode {
         run(.sequence([.scale(to: 1.25, duration: 0.1), .scale(to: 1, duration: 0.12)]))
     }
 
+    /// Marks the quest done (green, check) or closed off (red, cross) with a pop, holds a moment, then leaves.
     func dismiss(completed: Bool) {
+        disc.fillColor = completed ? Palette.questDone : Palette.questClosed
+        label.text = completed ? "✓" : "✕"
+        let mark = SKAction.sequence([.scale(to: 1.3, duration: 0.12), .scale(to: 1, duration: 0.12), .wait(forDuration: 0.5)])
         let exit: SKAction = completed
             ? .group([.scale(to: 1.8, duration: 0.3), .fadeOut(withDuration: 0.3)])
             : .group([.scale(to: 0.4, duration: 0.25), .fadeOut(withDuration: 0.25)])
-        run(.sequence([exit, .removeFromParent()]))
+        run(.sequence([mark, exit, .removeFromParent()]))
     }
 }
