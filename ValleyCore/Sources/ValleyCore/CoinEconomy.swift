@@ -6,6 +6,10 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     case swap
     /// Turn the current tile into a wildcard that matches anything.
     case wildcard
+    /// Blast a revealed mountain off the crater floor.
+    case dynamite
+    /// Lift the fog off every mountain in the crater.
+    case lantern
 
     public var id: Self { self }
 
@@ -14,6 +18,8 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
         case .undo: 30
         case .swap: 40
         case .wildcard: 80
+        case .dynamite: 60
+        case .lantern: 50
         }
     }
 
@@ -23,6 +29,8 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
         case .undo: 1
         case .swap: 2
         case .wildcard: 3
+        case .dynamite: 4
+        case .lantern: 5
         }
     }
 

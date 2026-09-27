@@ -6,19 +6,50 @@ public struct PlacementEvaluation: Hashable, Sendable {
     public let matchingEdges: [Int]
     /// Directions whose edge differs from the neighbor's facing edge.
     public let clashingEdges: [Int]
+    /// Every side faces a tile or a mountain; nothing more can ever touch this spot.
+    public let isEnclosed: Bool
 
-    /// All six sides have neighbors and all six match.
-    public var isPerfect: Bool { isLegal && matchingEdges.count == 6 }
+    /// Boxed in on all sides, touching at least two tiles, and matching every one.
+    public var isPerfect: Bool { isLegal && isEnclosed && clashingEdges.isEmpty && matchingEdges.count >= 2 }
 }
 
-/// The placed tiles of a valley. Tiles only ever get added.
+/// The placed tiles of a valley. On the open plane tiles can spread forever; in a
+/// crater (Coin mode) they stay on the floor and mountains block the way.
 public struct Board: Sendable {
     public private(set) var tiles: [Hex: Tile] = [:]
-    /// Empty hexes touching the valley: the only places a tile can go.
+    /// Empty floor touching the valley: the only places a tile can go.
     public private(set) var openSlots: Set<Hex> = []
+    /// Every mountain, seen or not. Empty on the open plane.
+    public private(set) var mountains: Set<Hex> = []
+    /// Mountains the player has seen: those touching a tile, or all of them after a Lantern.
+    public private(set) var revealedMountains: Set<Hex> = []
+    /// Hexes inside the crater rim, or nil on the open plane.
+    public let floor: Set<Hex>?
+    /// Every placement must match at least one neighboring edge.
+    public let requiresMatch: Bool
 
+    /// The open plane: no mountains, no edge, any placement that respects rivers.
     public init(starter: Tile) {
+        floor = nil
+        requiresMatch = false
         place(starter, at: .origin)
+    }
+
+    public init(starter: Tile, crater: Crater, requiresMatch: Bool) {
+        floor = crater.floor
+        mountains = crater.mountains
+        self.requiresMatch = requiresMatch
+        place(starter, at: .origin)
+    }
+
+    /// Floor that no mountain stands on.
+    public func isBuildable(_ hex: Hex) -> Bool {
+        !mountains.contains(hex) && (floor?.contains(hex) ?? true)
+    }
+
+    /// Revealed mountains standing on the floor. The rim can't be blasted.
+    public var clearableMountains: Set<Hex> {
+        revealedMountains.filter { floor?.contains($0) == true }
     }
 
     public subscript(hex: Hex) -> Tile? { tiles[hex] }
@@ -27,8 +58,13 @@ public struct Board: Sendable {
         var matching: [Int] = []
         var clashing: [Int] = []
         var isLegal = openSlots.contains(hex)
+        var isEnclosed = true
         for direction in 0..<6 {
-            guard let neighbor = tiles[hex.neighbor(direction)] else { continue }
+            let neighborHex = hex.neighbor(direction)
+            guard let neighbor = tiles[neighborHex] else {
+                if isBuildable(neighborHex) { isEnclosed = false }
+                continue
+            }
             let mine = tile.edge(direction)
             let theirs = neighbor.edge(Hex.opposite(direction))
             if mine.counts(as: theirs) || theirs.counts(as: mine) {
@@ -39,7 +75,8 @@ public struct Board: Sendable {
             // Rivers must flow into rivers. A wildcard edge can be a river.
             if mine != .wild && theirs != .wild && (mine == .water) != (theirs == .water) { isLegal = false }
         }
-        return PlacementEvaluation(isLegal: isLegal, matchingEdges: matching, clashingEdges: clashing)
+        if requiresMatch && matching.isEmpty { isLegal = false }
+        return PlacementEvaluation(isLegal: isLegal, matchingEdges: matching, clashingEdges: clashing, isEnclosed: isEnclosed)
     }
 
     public func canPlace(_ tile: Tile, at hex: Hex) -> Bool {
@@ -106,8 +143,9 @@ public struct Board: Sendable {
         var count = 0
         for hex in region {
             guard let tile = tiles[hex] else { continue }
-            for direction in 0..<6 where tile.edge(direction).counts(as: terrain) && tiles[hex.neighbor(direction)] == nil {
-                count += 1
+            for direction in 0..<6 where tile.edge(direction).counts(as: terrain) {
+                let next = hex.neighbor(direction)
+                if tiles[next] == nil && isBuildable(next) { count += 1 }
             }
         }
         return count
@@ -117,7 +155,27 @@ public struct Board: Sendable {
         tiles[hex] = tile
         openSlots.remove(hex)
         for neighbor in hex.neighbors where tiles[neighbor] == nil {
-            openSlots.insert(neighbor)
+            if mountains.contains(neighbor) {
+                // The fog lifts: a mountain next to a tile comes into view.
+                revealedMountains.insert(neighbor)
+            } else if isBuildable(neighbor) {
+                openSlots.insert(neighbor)
+            }
         }
+    }
+
+    /// Dynamite: blasts a revealed floor mountain, leaving open floor.
+    @discardableResult
+    mutating func clearMountain(at hex: Hex) -> Bool {
+        guard clearableMountains.contains(hex) else { return false }
+        mountains.remove(hex)
+        revealedMountains.remove(hex)
+        if hex.neighbors.contains(where: { tiles[$0] != nil }) { openSlots.insert(hex) }
+        return true
+    }
+
+    /// Lantern: lifts the fog off every mountain in the crater.
+    mutating func revealAllMountains() {
+        revealedMountains = mountains
     }
 }

@@ -28,5 +28,23 @@ public struct Hex: Hashable, Sendable, CustomStringConvertible {
     /// Folds any integer into a direction in `0..<6`.
     public static func wrap(_ direction: Int) -> Int { ((direction % 6) + 6) % 6 }
 
+    /// Steps between two hexes.
+    public func distance(to other: Hex) -> Int {
+        let dq = q - other.q
+        let dr = r - other.r
+        return (abs(dq) + abs(dr) + abs(dq + dr)) / 2
+    }
+
+    /// Every hex within `radius` steps of the origin, in a fixed order.
+    public static func within(radius: Int) -> [Hex] {
+        var hexes: [Hex] = []
+        for q in -radius...radius {
+            for r in max(-radius, -q - radius)...min(radius, -q + radius) {
+                hexes.append(Hex(q, r))
+            }
+        }
+        return hexes
+    }
+
     public var description: String { "(\(q), \(r))" }
 }

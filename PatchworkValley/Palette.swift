@@ -11,6 +11,14 @@ enum Palette {
     static let stitch = UIColor(red: 0.96, green: 0.93, blue: 0.84, alpha: 0.85)
     static let stitchShadow = UIColor.black.withAlphaComponent(0.25)
     static let houseWall = UIColor(red: 0.97, green: 0.93, blue: 0.85, alpha: 1)
+    static let stone = UIColor(red: 0.47, green: 0.44, blue: 0.40, alpha: 1)
+    static let rimStone = UIColor(red: 0.33, green: 0.31, blue: 0.29, alpha: 1)
+    static let rock = UIColor(red: 0.62, green: 0.58, blue: 0.53, alpha: 1)
+    static let rimRock = UIColor(red: 0.47, green: 0.44, blue: 0.41, alpha: 1)
+    static let rockEdge = UIColor.black.withAlphaComponent(0.2)
+    static let snow = UIColor(red: 0.96, green: 0.97, blue: 0.98, alpha: 1)
+    static let dust = UIColor(red: 0.78, green: 0.72, blue: 0.62, alpha: 0.8)
+    static let blast = UIColor(red: 1.0, green: 0.82, blue: 0.45, alpha: 0.9)
 }
 
 extension Terrain {

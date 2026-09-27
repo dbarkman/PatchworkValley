@@ -54,6 +54,37 @@ struct TileDrawing {
         return layers
     }
 
+    /// A mountain hex: stony ground with snow-capped peaks. The rim is darker, a wall rather than a lone peak.
+    static func mountainLayers(rim: Bool, geometry: HexGeometry) -> [Layer] {
+        let r = geometry.radius
+        let ground = rim ? Palette.rimStone : Palette.stone
+        var layers = [Layer(path: geometry.outlinePath(), fill: ground, stroke: ground, lineWidth: 1)]
+        // Back peak, then two in front: (center x, base y, half-width, height) in radius units.
+        let peaks: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [(0.05, -0.1, 0.42, 0.78), (-0.33, -0.35, 0.36, 0.6), (0.38, -0.38, 0.34, 0.52)]
+        for (x, base, half, height) in peaks {
+            let left = CGPoint(x: (x - half) * r, y: base * r)
+            let top = CGPoint(x: x * r, y: (base + height) * r)
+            let right = CGPoint(x: (x + half) * r, y: base * r)
+            let mountain = CGMutablePath()
+            mountain.addLines(between: [left, top, right])
+            mountain.closeSubpath()
+            layers.append(Layer(path: mountain, fill: rim ? Palette.rimRock : Palette.rock, stroke: Palette.rockEdge, lineWidth: 1))
+
+            // Snow on the top third.
+            let snowline: CGFloat = 0.34
+            let snow = CGMutablePath()
+            snow.addLines(between: [
+                CGPoint(x: top.x - half * r * snowline, y: top.y - height * r * snowline),
+                top,
+                CGPoint(x: top.x + half * r * snowline, y: top.y - height * r * snowline),
+            ])
+            snow.closeSubpath()
+            layers.append(Layer(path: snow, fill: Palette.snow))
+        }
+        layers.append(Layer(path: geometry.outlinePath(inset: 0.75), stroke: Palette.rim, lineWidth: 1.5))
+        return layers
+    }
+
     /// Wedge colors for a wildcard, one terrain per side.
     private static let wildPatchwork: [Terrain] = [.forest, .field, .village, .water, .meadow, .field]
 

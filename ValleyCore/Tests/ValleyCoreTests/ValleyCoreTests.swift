@@ -393,7 +393,7 @@ private let east = Hex(1, 0)
     @Test func coinValleysHold36TilesAndGrowTheirQuests() {
         #expect(ValleyGame(seed: 1, rules: .coins(valley: 1)).tilesLeft == 36)
         #expect(Rules.coins(valley: 1).questBase(afterPlacing: 0) < Rules.coins(valley: 9).questBase(afterPlacing: 0))
-        #expect(Rules.coins(valley: 99).questTargetBonus == Rules.coins(valley: 17).questTargetBonus)
+        #expect(Rules.coins(valley: 99).questTargetBonus == Rules.coins(valley: 19).questTargetBonus)
     }
 
     @Test func swapDealsANewTileWithoutChangingTheCount() {
@@ -412,28 +412,155 @@ private let east = Hex(1, 0)
     }
 }
 
-/// Economy check, not a pass/fail test: enable it to see what a typical Coin valley earns
-/// when a simple bot chases the active quests.
-@Test(.disabled("Run by hand when tuning coin prices"), arguments: [1, 5, 10])
+/// Economy check, not a pass/fail test: enable it to see what a typical Coin valley
+/// earns, and how often it runs out of room, when a bot chases the active quests
+/// while keeping room open (a stand-in for a player who plans ahead).
+@Test(.disabled("Run by hand when tuning Coin mode"), arguments: [1, 5, 10])
 func coinEconomyReport(valley: Int) {
     let runs = 300
     var totalCoins = 0
     var totalQuests = 0
     var nearMissRuns = 0
+    var outOfRoomRuns = 0
+    var tilesLeftWhenStuck = 0
     for seed in 1...runs {
         var game = ValleyGame(seed: UInt64(seed), rules: .coins(valley: valley))
         while !game.isOver {
             let focus = game.activeQuests.sorted { $0.remaining < $1.remaining }.map(\.terrain)
-            guard let move = GreedyBot.bestMove(in: game, focus: focus) else {
-                game.discardCurrent()
-                continue
-            }
+            guard let move = roomKeepingMove(in: game, focus: focus) else { break }
             game.rotateCurrent(clockwiseSteps: move.steps)
             game.placeCurrent(at: move.slot)
         }
         totalCoins += game.coins
         totalQuests += game.quests.filter { $0.status == .completed }.count
         if !game.nearMisses.isEmpty { nearMissRuns += 1 }
+        if game.outcome == .outOfRoom {
+            outOfRoomRuns += 1
+            tilesLeftWhenStuck += game.tilesLeft
+        }
     }
-    print("ECONOMY valley \(valley): \(totalCoins / runs) coins/valley, \(Double(totalQuests) / Double(runs)) quests/valley, near miss in \(nearMissRuns * 100 / runs)% of valleys")
+    let stuckAverage = outOfRoomRuns == 0 ? 0 : tilesLeftWhenStuck / outOfRoomRuns
+    print("ECONOMY valley \(valley): \(totalCoins / runs) coins/valley, \(Double(totalQuests) / Double(runs)) quests/valley, near miss in \(nearMissRuns * 100 / runs)%, out of room in \(outOfRoomRuns * 100 / runs)% (avg \(stuckAverage) tiles left)")
+}
+
+/// Grows quest regions like `GreedyBot`, but also values keeping open slots, as a planning player would.
+private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: Hex, steps: Int)? {
+    guard let tile = game.current else { return nil }
+    var best: (slot: Hex, steps: Int, value: Int)?
+    for slot in game.board.openSlots.sorted(by: { ($0.r, $0.q) < ($1.r, $1.q) }) {
+        for steps in 0..<6 {
+            let turned = tile.rotatedClockwise(steps)
+            let evaluation = game.board.evaluate(turned, at: slot)
+            guard evaluation.isLegal else { continue }
+            var board = game.board
+            board.place(turned, at: slot)
+            var value = evaluation.matchingEdges.count * 3 + board.openSlots.count * 2
+            for terrain in focus where turned.contains(terrain) {
+                value += 4 * game.board.region(of: terrain, from: slot, placing: turned).count
+            }
+            if value > (best?.value ?? -1) { best = (slot, steps, value) }
+        }
+    }
+    return best.map { ($0.slot, $0.steps) }
+}
+
+@Suite struct CraterTests {
+    @Test func radiusFourCraterHas61FloorHexesAndA30HexRim() {
+        let crater = Crater.generate(seed: 1, radius: 4, peakCount: 12, room: 37)
+        #expect(crater.floor.count == 61)
+        #expect(crater.rim.count == 30)
+        #expect(crater.floor.isDisjoint(with: crater.rim))
+    }
+
+    @Test(arguments: 1...40)
+    func everyCraterLeavesRoomForTheWholeStack(seed: UInt64) {
+        let crater = Crater.generate(seed: seed, radius: 4, peakCount: 20, room: 37)
+        #expect(crater.reachableFloor >= 37)
+        #expect(!crater.peaks.contains(.origin))
+        #expect(crater.peaks.isDisjoint(with: Hex.origin.neighbors))
+        #expect(crater.peaks.isSubset(of: crater.floor))
+    }
+
+    @Test func craterPeaksFollowTheRequestedCount() {
+        let peaks = (1...20).map { Crater.generate(seed: UInt64($0), radius: 4, peakCount: 12, room: 37).peaks.count }
+        let average = Double(peaks.reduce(0, +)) / Double(peaks.count)
+        #expect((10...16).contains(average))
+    }
+
+    @Test func sameSeedBuildsTheSameCrater() {
+        #expect(Crater.generate(seed: 9, radius: 4, peakCount: 12, room: 37) == Crater.generate(seed: 9, radius: 4, peakCount: 12, room: 37))
+    }
+
+    @Test func mountainsBlockPlacementAndAppearWhenATileTouchesThem() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        #expect(board.revealedMountains.isEmpty)
+        #expect(!board.openSlots.contains(Hex(2, 0)))
+        board.place(tile("mmmmmm", id: 1), at: east)
+        #expect(board.revealedMountains == [Hex(2, 0)])
+        #expect(!board.openSlots.contains(Hex(2, 0)))
+        #expect(!board.canPlace(tile("mmmmmm"), at: Hex(2, 0)))
+    }
+
+    @Test func tilesStayInsideTheRim() {
+        let crater = Crater.generate(seed: 2, radius: 4, peakCount: 0, room: 37)
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        for q in 1...4 { board.place(tile("mmmmmm", id: q), at: Hex(q, 0)) }
+        #expect(!board.openSlots.contains(Hex(5, 0)))
+        #expect(board.revealedMountains.contains(Hex(5, 0)))
+    }
+
+    @Test func matchRuleNeedsOneMatchingSide() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
+        let board = Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true)
+        #expect(!board.canPlace(tile("cccccc"), at: east))
+        #expect(board.canPlace(tile("cccfcc"), at: east))
+    }
+
+    @Test func dynamiteClearsARevealedFloorMountainButNotTheRim() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [Hex(5, 0)], peaks: [Hex(2, 0), Hex(3, -3)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("mmmmmm", id: 1), at: east)
+        let clearedRevealed = board.clearMountain(at: Hex(2, 0))
+        #expect(clearedRevealed)
+        #expect(board.openSlots.contains(Hex(2, 0)))
+        let clearedHidden = board.clearMountain(at: Hex(3, -3))
+        #expect(!clearedHidden, "hidden in fog")
+        let clearedRim = board.clearMountain(at: Hex(5, 0))
+        #expect(!clearedRim, "the rim stays")
+    }
+
+    @Test func lanternRevealsEveryMountain() {
+        let crater = Crater.generate(seed: 4, radius: 4, peakCount: 12, room: 37)
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.revealAllMountains()
+        #expect(board.revealedMountains == crater.mountains)
+    }
+
+    @Test func mountainsCountTowardAPerfectFit() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(2, -1), Hex(1, 1), Hex(0, 1)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
+        // East of the origin: neighbors are two mountains east, the origin, (1,-1), and two more mountains below.
+        #expect(board.evaluate(tile("mmmmmm"), at: east).isPerfect)
+    }
+
+    @Test func coinValleyStartsInACraterWithRoomToPlay() {
+        let game = ValleyGame(seed: 11, rules: .coins(valley: 1))
+        #expect(game.board.floor?.count == 61)
+        #expect(!game.board.mountains.isEmpty)
+        #expect(game.outcome == .playing)
+    }
+
+    @Test func aTileThatFitsNowhereLeavesTheValleyOutOfRoomUntilRescued() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
+        var rules = Rules.coins(valley: 1)
+        rules.startingTiles = 5
+        var game = ValleyGame(rules: rules, board: Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true), queue: [tile("cccccc")], tilesLeft: 5)
+        #expect(game.outcome == .outOfRoom)
+        game.discardCurrent()
+        #expect(game.tilesLeft == 5, "Coin mode has no free discard")
+        game.makeCurrentWild()
+        #expect(game.outcome == .playing)
+    }
 }

@@ -10,12 +10,16 @@ final class ValleyScene: SKScene {
 
     private let cameraNode = SKCameraNode()
     private let slotLayer = SKNode()
+    private let mountainLayer = SKNode()
     private let tileLayer = SKNode()
     private let ghostLayer = SKNode()
     private let badgeLayer = SKNode()
     private let effectLayer = SKNode()
 
     private var tileSprites: [Hex: SKSpriteNode] = [:]
+    private var mountainSprites: [Hex: SKSpriteNode] = [:]
+    private var peakTexture: SKTexture?
+    private var rimTexture: SKTexture?
     private var slotSprites: [Hex: SKSpriteNode] = [:]
     private var badges: [Int: QuestBadge] = [:]
     private var tileTextures: [[Terrain]: SKTexture] = [:]
@@ -31,7 +35,7 @@ final class ValleyScene: SKScene {
         scaleMode = .resizeFill
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
         backgroundColor = Palette.board
-        for (depth, layer) in [slotLayer, tileLayer, ghostLayer, badgeLayer, effectLayer].enumerated() {
+        for (depth, layer) in [slotLayer, mountainLayer, tileLayer, ghostLayer, badgeLayer, effectLayer].enumerated() {
             // Layers sit 10 apart so the small depths nodes use inside a layer never reach the next one.
             layer.zPosition = CGFloat(depth) * 10
             addChild(layer)
@@ -56,11 +60,13 @@ final class ValleyScene: SKScene {
 
     // MARK: - Reconciling with the model
 
-    /// Brings every node in line with the model. Pass the latest placement to animate it.
-    func sync(placement: PlacementResult? = nil) {
+    /// Brings every node in line with the model. Pass the latest placement, or a
+    /// mountain that was just blasted, to animate it.
+    func sync(placement: PlacementResult? = nil, blasted: Hex? = nil) {
         guard let view, let model else { return }
         let game = model.game
         syncTiles(game.board, placement: placement, in: view)
+        syncMountains(game.board, blasted: blasted, aiming: model.isAimingDynamite, in: view)
         syncSlots(game, in: view)
         syncBadges(game, placement: placement)
         syncGhost(model, in: view)
@@ -101,6 +107,113 @@ final class ValleyScene: SKScene {
             } else {
                 sprite.run(.fadeIn(withDuration: 0.25))
             }
+        }
+    }
+
+    // MARK: - Mountains
+
+    private func syncMountains(_ board: Board, blasted: Hex?, aiming: Bool, in view: SKView) {
+        for (hex, sprite) in mountainSprites where !board.revealedMountains.contains(hex) {
+            mountainSprites[hex] = nil
+            if hex == blasted {
+                explode(sprite)
+            } else {
+                sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+            }
+        }
+        // Mountains seen for the first time rise out of the fog, a few at a time when a Lantern lights them all.
+        let fresh = board.revealedMountains.filter { mountainSprites[$0] == nil }
+        for (index, hex) in fresh.sorted(by: { ($0.r, $0.q) < ($1.r, $1.q) }).enumerated() {
+            let isRim = board.floor?.contains(hex) == false
+            let sprite = SKSpriteNode(texture: mountainTexture(rim: isRim, in: view), size: geometry.tileSize)
+            sprite.position = geometry.center(of: hex)
+            mountainLayer.addChild(sprite)
+            mountainSprites[hex] = sprite
+            rise(sprite, delay: fresh.count > 3 ? Double(index) * 0.03 : 0)
+        }
+        // While aiming Dynamite, the mountains it can reach pulse.
+        let targets = aiming ? board.clearableMountains : []
+        for (hex, sprite) in mountainSprites {
+            if targets.contains(hex) {
+                guard sprite.action(forKey: "aim") == nil else { continue }
+                sprite.run(.repeatForever(.sequence([
+                    .group([.scale(to: 1.08, duration: 0.35), .colorize(with: .orange, colorBlendFactor: 0.45, duration: 0.35)]),
+                    .group([.scale(to: 1, duration: 0.35), .colorize(withColorBlendFactor: 0, duration: 0.35)]),
+                ])), withKey: "aim")
+            } else if sprite.action(forKey: "aim") != nil {
+                sprite.removeAction(forKey: "aim")
+                sprite.run(.group([.scale(to: 1, duration: 0.15), .colorize(withColorBlendFactor: 0, duration: 0.15)]))
+            }
+        }
+    }
+
+    private func mountainTexture(rim: Bool, in view: SKView) -> SKTexture {
+        if let cached = rim ? rimTexture : peakTexture { return cached }
+        let art = SKNode()
+        for (depth, layer) in TileDrawing.mountainLayers(rim: rim, geometry: geometry).enumerated() {
+            let shape = SKShapeNode(path: layer.path)
+            shape.zPosition = CGFloat(depth)
+            shape.fillColor = layer.fill ?? .clear
+            shape.strokeColor = layer.stroke ?? .clear
+            shape.lineWidth = layer.lineWidth
+            shape.lineCap = layer.lineCap
+            art.addChild(shape)
+        }
+        let texture = view.texture(from: art, crop: geometry.bounds) ?? SKTexture()
+        if rim { rimTexture = texture } else { peakTexture = texture }
+        return texture
+    }
+
+    /// A mountain pushes up out of the fog with a puff of dust.
+    private func rise(_ sprite: SKSpriteNode, delay: TimeInterval) {
+        let home = sprite.position
+        sprite.alpha = 0
+        sprite.setScale(0.5)
+        sprite.position = CGPoint(x: home.x, y: home.y - geometry.radius * 0.3)
+        let lift = SKAction.group([
+            .fadeIn(withDuration: 0.18),
+            .move(to: home, duration: 0.3),
+            .sequence([.scale(to: 1.06, duration: 0.22), .scale(to: 1, duration: 0.1)]),
+        ])
+        lift.timingMode = .easeOut
+        sprite.run(.sequence([.wait(forDuration: delay), lift]))
+        run(.wait(forDuration: delay)) { [weak self] in self?.puff(at: home, color: Palette.dust, count: 6) }
+    }
+
+    /// Dynamite: the mountain bursts apart in a flash and flying rock.
+    private func explode(_ sprite: SKSpriteNode) {
+        let center = sprite.position
+        sprite.run(.sequence([
+            .group([.scale(to: 1.3, duration: 0.18), .fadeOut(withDuration: 0.18)]),
+            .removeFromParent(),
+        ]))
+        let flash = SKShapeNode(circleOfRadius: geometry.radius * 0.8)
+        flash.fillColor = Palette.blast
+        flash.strokeColor = .clear
+        flash.position = center
+        flash.setScale(0.2)
+        effectLayer.addChild(flash)
+        flash.run(.sequence([
+            .group([.scale(to: 1.4, duration: 0.25), .fadeOut(withDuration: 0.3)]),
+            .removeFromParent(),
+        ]))
+        puff(at: center, color: Palette.rock, count: 10, reach: 1.2)
+    }
+
+    /// Small particles thrown outward from `point`, fading as they go.
+    private func puff(at point: CGPoint, color: UIColor, count: Int, reach: CGFloat = 0.6) {
+        for index in 0..<count {
+            let angle = CGFloat(index) / CGFloat(count) * 2 * .pi + CGFloat.random(in: -0.3...0.3)
+            let size = geometry.radius * CGFloat.random(in: 0.07...0.13)
+            let bit = SKShapeNode(circleOfRadius: size)
+            bit.fillColor = color
+            bit.strokeColor = .clear
+            bit.position = CGPoint(x: point.x, y: point.y - geometry.radius * 0.35)
+            effectLayer.addChild(bit)
+            let distance = geometry.radius * reach * CGFloat.random(in: 0.6...1)
+            let drift = SKAction.moveBy(x: cos(angle) * distance, y: sin(angle) * distance * 0.5 + geometry.radius * 0.15, duration: 0.5)
+            drift.timingMode = .easeOut
+            bit.run(.sequence([.group([drift, .fadeOut(withDuration: 0.5)]), .removeFromParent()]))
         }
     }
 

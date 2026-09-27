@@ -20,6 +20,10 @@ The menu also restarts the current run. All tuning numbers live in `Rules` (`Val
 ## Coin mode
 
 - Each valley is a fresh board with 36 tiles (6 × 6) and random quests, as in Zen. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
+- **The crater:** the valley floor is a hexagon of radius 4 (61 hexes) ringed by a mountain rim. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for all 36 tiles.
+- **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground or a mountain rising out of the fog. The rim appears as you reach the edge.
+- **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
+- **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Undo, Swap, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
 - **Coins:** a quest pays 5 + 2 per tile of its target (a forest of 8 pays 21). A perfect fit pays 5. Moving on from a finished valley pays 20. Coins stay in a wallet across valleys; new players start with 200.
 - **Valleys are numbered** and quests grow by one every two valleys, up to eight bigger than valley 1's.
 - **Power-ups** are introduced one per valley on the valley's opening card, and bought with coins from the bar under the tile tray:
@@ -29,9 +33,19 @@ The menu also restarts the current run. All tuning numbers live in `Rules` (`Val
 | Undo | Valley 1 | 30 | Take back the last placement and the coins it earned |
 | Swap | Valley 2 | 40 | Trade the tile in hand for a freshly dealt one |
 | Wildcard | Valley 3 | 80 | The tile in hand becomes a patchwork that matches, and joins, any terrain |
+| Dynamite | Valley 4 | 60 | Blast a revealed mountain on the valley floor (not the rim), opening the ground |
+| Lantern | Valley 5 | 50 | Lift the fog off every mountain in the valley |
 
 - **End of a valley:** when the stack runs out, the card shows the coins earned. If a quest is within three tiles, it offers **+3 tiles for 100 coins**; otherwise it offers the next valley.
-- **Economy:** a simple bot chasing quests earns 55–60 coins per valley (the disabled `coinEconomyReport` test), about 75–80 with the finishing bonus, so a valley pays for roughly one power-up. A quest is close at the end of 40–55% of valleys, so the +3 offer comes up often.
+- **Economy and difficulty:** the disabled `coinEconomyReport` test plays 300 valleys with a bot that chases quests while keeping room open (a stand-in for a planning player):
+
+| Valley | Coins per valley (+20 bonus) | Quests | Out of room |
+|---|---|---|---|
+| 1 | 44 | 2.5 | 10% |
+| 5 | 38 | 1.9 | 15% |
+| 10 | 29 | 1.1 | 20% |
+
+  A purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
 ## Levels (main mode)
@@ -75,4 +89,4 @@ The look is patchwork quilt: tiles resemble fabric patches with stitched seams, 
 
 ## Prototype scope
 
-The prototype covers Coin mode with three power-ups, five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include real-money purchases, the quilt, sound, final art or a tutorial.
+The prototype covers Coin mode (crater, fog, mountains, five power-ups), five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include real-money purchases, the quilt, sound, final art or a tutorial.

@@ -21,6 +21,10 @@ struct GameView: View {
 
             VStack(spacing: 12) {
                 TopBar(model: model)
+                if model.isAimingDynamite {
+                    AimingBanner(model: model)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if let toast = model.toast {
                     ToastView(toast: toast)
                         .id(toast.id)
@@ -38,6 +42,24 @@ struct GameView: View {
         .animation(.snappy, value: model.overlay)
         .animation(.snappy, value: model.toast)
         .animation(.snappy, value: model.mode)
+        .animation(.snappy, value: model.isAimingDynamite)
+    }
+}
+
+/// Shown while Dynamite waits for the player to pick a mountain.
+private struct AimingBanner: View {
+    let model: GameModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("Tap a glowing mountain to blast it", systemImage: PowerUp.dynamite.symbolName)
+                .font(.headline)
+            Button("Cancel") { model.cancelDynamite() }
+                .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
     }
 }
 
@@ -381,8 +403,8 @@ private struct TileTray: View {
                 .font(.headline)
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(points)))
-        } else if model.selectedSlot != nil {
-            Text("Rivers must connect")
+        } else if let evaluation = model.ghostEvaluation {
+            Text(evaluation.matchingEdges.isEmpty && model.game.board.requiresMatch ? "Match at least one side" : "Rivers must connect")
                 .foregroundStyle(.red)
         } else {
             Text("Tap a glowing spot")
@@ -442,6 +464,7 @@ private struct OverlayCard: View {
             switch overlay {
             case .valleyIntro: valleyIntro
             case .valleyDone: valleyDone
+            case .valleyStuck: valleyStuck
             case .levelIntro: levelIntro
             case .levelWon: levelWon
             case .levelLost: levelLost
@@ -481,6 +504,10 @@ private struct OverlayCard: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
+        Text("Every tile must match a side. Mountains hide in the fog.")
+            .font(.footnote)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
         Button {
             model.beginValley()
         } label: {
@@ -509,6 +536,34 @@ private struct OverlayCard: View {
         .buttonStyle(.borderedProminent)
         // When a +3 tiles offer is showing, it leads; moving on is the quieter choice.
         .tint(model.game.nearMisses.isEmpty ? .accentColor : .secondary)
+        .controlSize(.large)
+    }
+
+    @ViewBuilder private var valleyStuck: some View {
+        Text("No room for this tile")
+            .font(.title2.bold())
+        if let tile = model.game.current {
+            TilePreview(tile: tile)
+                .frame(width: 64, height: 64)
+        }
+        Text(model.canRescue ? "It doesn't match anywhere it could go. Rescue it:" : "It doesn't match anywhere it could go.")
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+        let rescues = [PowerUp.undo, .swap, .wildcard, .dynamite].filter(model.isUnlocked)
+        if !rescues.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(rescues) { powerUp in
+                    PowerUpButton(powerUp: powerUp, model: model)
+                }
+            }
+        }
+        Button {
+            model.restart()
+        } label: {
+            Text("Retry valley").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(model.canRescue ? .secondary : .accentColor)
         .controlSize(.large)
     }
 
@@ -663,27 +718,38 @@ private struct PowerUpBar: View {
     let model: GameModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(PowerUp.allCases.filter(model.isUnlocked)) { powerUp in
-                Button {
-                    model.use(powerUp)
-                } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: powerUp.symbolName)
-                            .font(.headline)
-                        Text(powerUp.title)
-                            .font(.caption.weight(.semibold))
-                        Label("\(powerUp.price)", systemImage: "centsign.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.canUse(powerUp))
-                .accessibilityLabel("\(powerUp.title), \(powerUp.price) coins")
+                PowerUpButton(powerUp: powerUp, model: model)
             }
         }
+    }
+}
+
+private struct PowerUpButton: View {
+    let powerUp: PowerUp
+    let model: GameModel
+
+    var body: some View {
+        Button {
+            model.use(powerUp)
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: powerUp.symbolName)
+                    .font(.headline)
+                Text(powerUp.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Label("\(powerUp.price)", systemImage: "centsign.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!model.canUse(powerUp))
+        .accessibilityLabel("\(powerUp.title), \(powerUp.price) coins")
     }
 }
 
@@ -693,6 +759,8 @@ extension PowerUp {
         case .undo: "Undo"
         case .swap: "Swap"
         case .wildcard: "Wildcard"
+        case .dynamite: "Dynamite"
+        case .lantern: "Lantern"
         }
     }
 
@@ -701,6 +769,8 @@ extension PowerUp {
         case .undo: "arrow.uturn.backward"
         case .swap: "arrow.triangle.2.circlepath"
         case .wildcard: "sparkles"
+        case .dynamite: "burst.fill"
+        case .lantern: "lightbulb.fill"
         }
     }
 
@@ -709,6 +779,8 @@ extension PowerUp {
         case .undo: "Take back your last tile, and the coins it earned."
         case .swap: "Trade the tile in your hand for a fresh one."
         case .wildcard: "Turn the tile in your hand into a patch that matches anything."
+        case .dynamite: "Blast a mountain you can see, opening the ground beneath it."
+        case .lantern: "Lift the fog to see every mountain in the valley."
         }
     }
 }

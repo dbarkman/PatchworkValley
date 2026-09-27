@@ -31,7 +31,7 @@ enum GameMode: String, CaseIterable, Identifiable {
 
 /// The card covering the board, if any.
 enum Overlay: Equatable {
-    case valleyIntro, valleyDone
+    case valleyIntro, valleyDone, valleyStuck
     case levelIntro, levelWon, levelLost, allLevelsDone
     case zenOver
 }
@@ -67,6 +67,8 @@ final class GameModel {
     private(set) var coinGame: ValleyGame
     private(set) var isShowingValleyIntro = true
     private(set) var undoPoint: UndoPoint?
+    /// Dynamite is bought and waiting for the player to tap a mountain.
+    private(set) var isAimingDynamite = false
     /// The level being played, or the next one up after a win. One past the last level means all are done.
     private(set) var level: Int
     private(set) var zenBest: Int
@@ -136,10 +138,13 @@ final class GameModel {
         if mode == .levels && hasFinishedAllLevels { return .allLevelsDone }
         return switch (mode, game.outcome) {
         case (.coins, .outOfTiles): .valleyDone
+        case (.coins, .outOfRoom): isAimingDynamite ? nil : .valleyStuck
         case (.coins, _): isShowingValleyIntro ? .valleyIntro : nil
         case (.levels, .playing): isShowingLevelIntro ? .levelIntro : nil
         case (.levels, .won): .levelWon
         case (.levels, .outOfTiles): .levelLost
+        // Levels allow discards, so they never run out of room.
+        case (.levels, .outOfRoom): nil
         case (.zen, .outOfTiles): .zenOver
         case (.zen, _): nil
         }
@@ -159,6 +164,10 @@ final class GameModel {
 
     /// First tap on a slot moves the ghost there in its best rotation; tapping the ghost again cycles fitting rotations.
     func tap(_ hex: Hex) {
+        if isAimingDynamite {
+            blast(hex)
+            return
+        }
         guard overlay == nil, let tile = game.current, game.board.openSlots.contains(hex) else { return }
         if hex == selectedSlot {
             let steps = (1...6).first { game.board.canPlace(tile.rotatedClockwise($0), at: hex) } ?? 1
@@ -233,8 +242,11 @@ final class GameModel {
         valley >= powerUp.unlockValley
     }
 
+    /// Power-ups work during play and from the out-of-room card, as a rescue.
     func canUse(_ powerUp: PowerUp) -> Bool {
-        guard mode == .coins, overlay == nil, isUnlocked(powerUp), game.current != nil else { return false }
+        guard mode == .coins, overlay == nil || overlay == .valleyStuck, !isAimingDynamite,
+              isUnlocked(powerUp), game.current != nil else { return false }
+        let board = game.board
         switch powerUp {
         case .undo:
             // Undo also takes back the coins the placement earned.
@@ -244,7 +256,16 @@ final class GameModel {
             return wallet >= powerUp.price
         case .wildcard:
             return wallet >= powerUp.price && game.current?.isWild == false
+        case .dynamite:
+            return wallet >= powerUp.price && !board.clearableMountains.isEmpty
+        case .lantern:
+            return wallet >= powerUp.price && board.revealedMountains != board.mountains
         }
+    }
+
+    /// Any power-up that could get an out-of-room valley going again.
+    var canRescue: Bool {
+        [PowerUp.undo, .swap, .wildcard, .dynamite].contains(where: canUse)
     }
 
     func use(_ powerUp: PowerUp) {
@@ -261,12 +282,38 @@ final class GameModel {
             coinGame.swapCurrent()
         case .wildcard:
             coinGame.makeCurrentWild()
+        case .dynamite:
+            // Paid for when a mountain is actually blasted.
+            isAimingDynamite = true
+            resetSelection()
+            haptics.select()
+            scene.sync()
+            return
+        case .lantern:
+            coinGame.lightCrater()
         }
         addCoins(-powerUp.price)
         undoPoint = nil
         resetSelection()
         haptics.success()
         scene.sync()
+    }
+
+    func cancelDynamite() {
+        isAimingDynamite = false
+        scene.sync()
+    }
+
+    private func blast(_ hex: Hex) {
+        guard coinGame.clearMountain(at: hex) else {
+            haptics.warn()
+            return
+        }
+        addCoins(-PowerUp.dynamite.price)
+        isAimingDynamite = false
+        undoPoint = nil
+        haptics.success()
+        scene.sync(blasted: hex)
     }
 
     // MARK: - Valleys
@@ -287,6 +334,7 @@ final class GameModel {
         defaults.set(number, forKey: Key.valley)
         coinGame = Self.makeCoinGame(valley: number)
         isShowingValleyIntro = true
+        isAimingDynamite = false
         undoPoint = nil
         resetSelection()
         clearFeedback()
@@ -309,6 +357,7 @@ final class GameModel {
         guard newMode != mode else { return }
         mode = newMode
         defaults.set(newMode.rawValue, forKey: Key.mode)
+        isAimingDynamite = false
         resetSelection()
         clearFeedback()
         scene.sync()
@@ -419,7 +468,7 @@ final class GameModel {
         switch game.outcome {
         case .won:
             haptics.success()
-        case .outOfTiles:
+        case .outOfTiles, .outOfRoom:
             haptics.warn()
         case .playing:
             let notable = !result.metGoals.isEmpty || !result.completedQuests.isEmpty || result.evaluation.isPerfect

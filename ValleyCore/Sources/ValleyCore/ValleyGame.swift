@@ -21,11 +21,20 @@ public struct Rules: Sendable {
     public var questCoinsPerTile = 0
     /// Added to every quest target, so later coin valleys ask for more.
     public var questTargetBonus = 0
+    /// Coin mode's crater radius. Zero means the open plane.
+    public var craterRadius = 0
+    /// Peaks and ridges standing on the crater floor.
+    public var peakCount = 0
+    /// Every placement must match at least one neighboring edge.
+    public var requiresMatch = false
+    /// A tile that fits nowhere can be thrown away for a tile (Levels, Zen). Without
+    /// discards, a tile that fits nowhere means the run is out of room.
+    public var allowsDiscard = true
 
     public init() {}
 
     /// Coin mode: a 36-tile valley (6 × 6) whose quests pay coins instead of tiles.
-    /// Quests grow by one every two valleys, up to eight bigger than valley 1's.
+    /// Quests grow by one every three valleys, up to six bigger than valley 1's.
     public static func coins(valley: Int) -> Rules {
         var rules = Rules()
         rules.startingTiles = 36
@@ -34,8 +43,14 @@ public struct Rules: Sendable {
         rules.coinsPerPerfect = 5
         rules.questCoinBase = 5
         rules.questCoinsPerTile = 2
-        rules.questTargetBonus = min(8, (max(1, valley) - 1) / 2)
+        rules.questTargetBonus = min(6, (max(1, valley) - 1) / 3)
         rules.continueTiles = 3
+        // A 61-hex crater: 6 peaks in valley 1, one more every two valleys up to 14.
+        // See `coinEconomyReport` for how often a room-keeping bot gets stuck.
+        rules.craterRadius = 4
+        rules.peakCount = min(14, 5 + (max(1, valley) + 1) / 2)
+        rules.requiresMatch = true
+        rules.allowsDiscard = false
         return rules
     }
 
@@ -99,7 +114,10 @@ public enum Outcome: Hashable, Sendable {
     case playing
     /// Every goal is met. Only levels have goals, so only levels are won.
     case won
+    /// The stack is used up. In Coin mode, that finishes the valley.
     case outOfTiles
+    /// The tile in hand fits nowhere and discarding isn't allowed (Coin mode). A power-up can rescue the run.
+    case outOfRoom
 }
 
 /// What one placement did, for scoring feedback and animation.
@@ -139,7 +157,17 @@ public struct ValleyGame: Sendable {
     public init(seed: UInt64, rules: Rules = Rules(), goals: [Goal] = []) {
         var generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance)
         self.rules = rules
-        board = Board(starter: generator.makeStarterTile())
+        if rules.craterRadius > 0 {
+            let crater = Crater.generate(
+                seed: seed ^ 0xC4A7_E500,
+                radius: rules.craterRadius,
+                peakCount: rules.peakCount,
+                room: rules.startingTiles + 1
+            )
+            board = Board(starter: generator.makeCraterStarterTile(), crater: crater, requiresMatch: rules.requiresMatch)
+        } else {
+            board = Board(starter: generator.makeStarterTile())
+        }
         self.generator = generator
         tilesLeft = rules.startingTiles
         self.goals = goals
@@ -171,7 +199,14 @@ public struct ValleyGame: Sendable {
 
     public var outcome: Outcome {
         if !goals.isEmpty && goals.allSatisfy(\.isMet) { return .won }
-        return tilesLeft == 0 ? .outOfTiles : .playing
+        if tilesLeft == 0 { return .outOfTiles }
+        if !rules.allowsDiscard && isStuck { return .outOfRoom }
+        return .playing
+    }
+
+    /// Power-ups can change the run while playing, or rescue it when out of room.
+    private var canUsePowerUps: Bool {
+        !queue.isEmpty && (outcome == .playing || outcome == .outOfRoom)
     }
 
     public var isOver: Bool { outcome != .playing }
@@ -267,19 +302,32 @@ public struct ValleyGame: Sendable {
 
     /// Swap power-up: trades the current tile for a freshly dealt one. The stack count doesn't change.
     public mutating func swapCurrent() {
-        guard outcome == .playing, !queue.isEmpty else { return }
+        guard canUsePowerUps else { return }
         queue[0] = generator.makeTile(allowQuest: false, questBase: 0)
     }
 
     /// Wildcard power-up: the current tile becomes a wildcard that matches anything. The stack count doesn't change.
     public mutating func makeCurrentWild() {
-        guard outcome == .playing, !queue.isEmpty else { return }
+        guard canUsePowerUps else { return }
         queue[0] = generator.makeWildTile()
+    }
+
+    /// Dynamite power-up: blasts a revealed mountain on the crater floor. Returns false when there's no such mountain.
+    @discardableResult
+    public mutating func clearMountain(at hex: Hex) -> Bool {
+        guard canUsePowerUps else { return false }
+        return board.clearMountain(at: hex)
+    }
+
+    /// Lantern power-up: shows every mountain in the crater.
+    public mutating func lightCrater() {
+        guard canUsePowerUps else { return }
+        board.revealAllMountains()
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.
     public mutating func discardCurrent() {
-        guard outcome == .playing, isStuck else { return }
+        guard rules.allowsDiscard, outcome == .playing, isStuck else { return }
         queue.removeFirst()
         tilesLeft -= 1
         refillQueue()

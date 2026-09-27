@@ -47,6 +47,14 @@ public struct TileGenerator: Sendable {
         return Tile(id: nextID, edges: edges, quest: quest)
     }
 
+    /// A crater's first tile: all four land terrains in bands, so the first tile
+    /// dealt always has a side it can match.
+    public mutating func makeCraterStarterTile() -> Tile {
+        let bands: [Terrain] = [.meadow, .meadow, .forest, .field, .field, .village]
+        let turn = Int.random(in: 0..<6, using: &rng)
+        return Tile(id: 0, edges: (0..<6).map { bands[($0 + turn) % 6] })
+    }
+
     /// A tile from the Wildcard power-up: every edge matches anything.
     public mutating func makeWildTile() -> Tile {
         defer { nextID += 1 }
