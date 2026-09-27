@@ -203,6 +203,11 @@ final class GameModel {
                 addCoins(result.coins)
                 showCoinGain(result.coins)
             }
+            // Bank a finished valley right away, so quitting on the end card never loses it.
+            if !before.hasFinishedStack && game.hasFinishedStack {
+                addCoins(CoinEconomy.valleyBonus)
+                defaults.set(valley + 1, forKey: Key.valley)
+            }
         }
         if mode == .levels, game.outcome == .won { defaults.set(level + 1, forKey: Key.level) }
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
@@ -211,8 +216,8 @@ final class GameModel {
     }
 
     func discard() {
+        guard game.rules.allowsDiscard else { return }
         game.discardCurrent()
-        undoPoint = nil
         resetSelection()
         haptics.warn()
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
@@ -223,15 +228,23 @@ final class GameModel {
         mode != .coins || wallet >= CoinEconomy.continuePrice
     }
 
+    /// The end card offers more tiles only when the stack is empty and a quest or goal is close.
+    var offersMoreTiles: Bool {
+        game.canContinue && !game.nearMisses.isEmpty
+    }
+
     /// "+N tiles" after running out: free in Levels and Zen, bought with coins in Coin mode.
     func continueRun() {
         guard canAffordMoreTiles else {
             haptics.warn()
             return
         }
-        if mode == .coins { addCoins(-CoinEconomy.continuePrice) }
+        guard game.canContinue else { return }
+        if mode == .coins {
+            addCoins(-CoinEconomy.continuePrice)
+            undoPoint = nil
+        }
         game.continueRun()
-        undoPoint = nil
         haptics.success()
         scene.sync()
     }
@@ -323,15 +336,16 @@ final class GameModel {
         scene.sync()
     }
 
-    /// Banks the finishing bonus and deals the next valley.
+    /// Deals the next valley. The finishing bonus was banked when the stack ran out.
     func nextValley() {
-        addCoins(CoinEconomy.valleyBonus)
         startValley(valley + 1)
     }
 
-    private func startValley(_ number: Int) {
+    /// Saved progress only moves forward, so replaying a finished valley never loses the next one.
+    private func startValley(_ number: Int, canRewindProgress: Bool = false) {
         valley = number
-        defaults.set(number, forKey: Key.valley)
+        let saved = defaults.integer(forKey: Key.valley)
+        defaults.set(canRewindProgress ? number : max(number, saved), forKey: Key.valley)
         coinGame = Self.makeCoinGame(valley: number)
         isShowingValleyIntro = true
         isAimingDynamite = false
@@ -407,7 +421,7 @@ final class GameModel {
     }
 
     func debugJumpValley(to number: Int) {
-        startValley(max(1, number))
+        startValley(max(1, number), canRewindProgress: true)
     }
 
     func debugJump(to number: Int) {
@@ -460,6 +474,8 @@ final class GameModel {
     }
 
     private func turn(_ steps: Int) {
+        // A wildcard looks and plays the same every way round, so it doesn't turn.
+        guard game.current?.isWild == false else { return }
         game.rotateCurrent(clockwiseSteps: steps)
         rotationTurns += steps
     }

@@ -537,10 +537,11 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(board.revealedMountains == crater.mountains)
     }
 
-    @Test func mountainsCountTowardAPerfectFit() {
+    @Test func revealedMountainsCountTowardAPerfectFit() {
         let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(2, -1), Hex(1, 1), Hex(0, 1)])
         var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
         board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
+        board.revealAllMountains()
         // East of the origin: neighbors are two mountains east, the origin, (1,-1), and two more mountains below.
         #expect(board.evaluate(tile("mmmmmm"), at: east).isPerfect)
     }
@@ -562,5 +563,54 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(game.tilesLeft == 5, "Coin mode has no free discard")
         game.makeCurrentWild()
         #expect(game.outcome == .playing)
+    }
+}
+
+@Suite struct ReviewFixTests {
+    /// Buying tiles after finishing the stack can't turn a finished valley into a loss.
+    @Test func aBoughtTileThatFitsNowhereStillLeavesTheValleyFinished() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
+        var rules = Rules.coins(valley: 1)
+        rules.startingTiles = 1
+        var game = ValleyGame(rules: rules, board: Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true), queue: [tile("mmmfmm")], tilesLeft: 1)
+        game.placeCurrent(at: east)
+        #expect(game.outcome == .outOfTiles)
+        #expect(game.hasFinishedStack)
+        #expect(game.canContinue)
+
+        game.continueRun(adding: 1)
+        // Whatever the new tile is, the finished valley never becomes out of room.
+        #expect(game.outcome != .outOfRoom)
+    }
+
+    @Test func continuingNeedsAnEmptyStack() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
+        var rules = Rules.coins(valley: 1)
+        rules.startingTiles = 1
+        var game = ValleyGame(rules: rules, board: Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true), queue: [tile("mmmfmm")], tilesLeft: 1)
+        game.placeCurrent(at: east)
+        game.continueRun(adding: 3)
+        let afterFirst = game.tilesLeft
+        game.continueRun(adding: 3)
+        #expect(game.tilesLeft == afterFirst, "a second continue before the stack is empty does nothing")
+    }
+
+    @Test func previewDoesNotGiveAwayFoggedMountains() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(1, 1), Hex(2, -1), Hex(0, 1)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
+        #expect(!board.revealedMountains.contains(Hex(2, 0)))
+        #expect(!board.evaluate(tile("mmmmmm"), at: east).isPerfect)
+    }
+
+    @Test func placingRevealsMountainsAndThenCountsThePerfectFit() throws {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [Hex(2, 0), Hex(1, 1), Hex(2, -1), Hex(0, 1)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("mmmmmm", id: 1), at: Hex(1, -1))
+        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("mmmmmm")], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.evaluation.isPerfect)
+        #expect(result.coins == game.rules.coinsPerPerfect)
     }
 }

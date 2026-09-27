@@ -151,6 +151,8 @@ public struct ValleyGame: Sendable {
     /// Every Zen quest this run, in the order started.
     public private(set) var quests: [Quest] = []
     public private(set) var goals: [Goal]
+    /// The dealt stack has been used up at least once. Tiles bought after that are a bonus.
+    public private(set) var hasFinishedStack = false
     private var queue: [Tile] = []
     private var generator: TileGenerator
 
@@ -200,9 +202,15 @@ public struct ValleyGame: Sendable {
     public var outcome: Outcome {
         if !goals.isEmpty && goals.allSatisfy(\.isMet) { return .won }
         if tilesLeft == 0 { return .outOfTiles }
-        if !rules.allowsDiscard && isStuck { return .outOfRoom }
+        if !rules.allowsDiscard && isStuck {
+            // A bought tile that fits nowhere can't undo a finished stack: the valley still counts as done.
+            return hasFinishedStack ? .outOfTiles : .outOfRoom
+        }
         return .playing
     }
+
+    /// More tiles can be bought: the stack is empty and the run is otherwise over.
+    public var canContinue: Bool { tilesLeft == 0 && outcome == .outOfTiles }
 
     /// Power-ups can change the run while playing, or rescue it when out of room.
     private var canUsePowerUps: Bool {
@@ -244,14 +252,21 @@ public struct ValleyGame: Sendable {
     @discardableResult
     public mutating func placeCurrent(at hex: Hex) -> PlacementResult? {
         guard outcome == .playing, let tile = current else { return nil }
-        let evaluation = board.evaluate(tile, at: hex)
-        guard evaluation.isLegal else { return nil }
+        let preview = board.evaluate(tile, at: hex)
+        guard preview.isLegal else { return nil }
 
         board.place(tile, at: hex)
         queue.removeFirst()
         tilesLeft -= 1
         tilesPlaced += 1
 
+        // Judge the perfect fit after placing: that lifts the fog off neighboring mountains, which count as closed sides.
+        let evaluation = PlacementEvaluation(
+            isLegal: true,
+            matchingEdges: preview.matchingEdges,
+            clashingEdges: preview.clashingEdges,
+            isEnclosed: board.isEnclosed(hex)
+        )
         var earned = points(for: evaluation)
         var awarded = evaluation.isPerfect ? rules.perfectBonusTiles : 0
         var coinsEarned = evaluation.isPerfect ? rules.coinsPerPerfect : 0
@@ -280,6 +295,7 @@ public struct ValleyGame: Sendable {
 
         let metGoals = refreshGoals()
         tilesLeft += awarded
+        if tilesLeft == 0 { hasFinishedStack = true }
         let bonus = outcome == .won ? tilesLeft * rules.unusedTileBonus : 0
 
         score += earned + bonus
@@ -330,12 +346,13 @@ public struct ValleyGame: Sendable {
         guard rules.allowsDiscard, outcome == .playing, isStuck else { return }
         queue.removeFirst()
         tilesLeft -= 1
+        if tilesLeft == 0 { hasFinishedStack = true }
         refillQueue()
     }
 
     /// Adds tiles to a run that ran out so it keeps going.
     public mutating func continueRun(adding count: Int? = nil) {
-        guard outcome == .outOfTiles else { return }
+        guard canContinue else { return }
         tilesLeft += count ?? rules.continueTiles
         refillQueue()
     }

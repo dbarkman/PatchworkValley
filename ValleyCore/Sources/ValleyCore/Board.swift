@@ -47,6 +47,11 @@ public struct Board: Sendable {
         !mountains.contains(hex) && (floor?.contains(hex) ?? true)
     }
 
+    /// Every side of `hex` faces a tile, a mountain or the crater's edge.
+    public func isEnclosed(_ hex: Hex) -> Bool {
+        hex.neighbors.allSatisfy { tiles[$0] != nil || !isBuildable($0) }
+    }
+
     /// Revealed mountains standing on the floor. The rim can't be blasted.
     public var clearableMountains: Set<Hex> {
         revealedMountains.filter { floor?.contains($0) == true }
@@ -62,7 +67,10 @@ public struct Board: Sendable {
         for direction in 0..<6 {
             let neighborHex = hex.neighbor(direction)
             guard let neighbor = tiles[neighborHex] else {
-                if isBuildable(neighborHex) { isEnclosed = false }
+                // Open floor, or a mountain still in fog, reads as open: the preview mustn't give the fog away.
+                if isBuildable(neighborHex) || (mountains.contains(neighborHex) && !revealedMountains.contains(neighborHex)) {
+                    isEnclosed = false
+                }
                 continue
             }
             let mine = tile.edge(direction)

@@ -39,12 +39,12 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// Coin mode's other numbers. A simple bot earns about 55–60 coins per valley
+/// Coin mode's other numbers. A planning bot earns about 30–45 coins per valley
 /// from quests and perfect fits (see `coinEconomyReport` in the tests), so with
 /// the finishing bonus a valley pays for roughly one power-up.
 public enum CoinEconomy {
     public static let startingWallet = 200
-    /// Paid when the player moves on from a finished valley.
+    /// Paid the moment a valley's stack is used up.
     public static let valleyBonus = 20
     /// "+3 tiles" when a valley runs out with a quest close.
     public static let continuePrice = 100

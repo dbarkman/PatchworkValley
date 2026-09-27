@@ -176,8 +176,12 @@ final class ValleyScene: SKScene {
             .sequence([.scale(to: 1.06, duration: 0.22), .scale(to: 1, duration: 0.1)]),
         ])
         lift.timingMode = .easeOut
-        sprite.run(.sequence([.wait(forDuration: delay), lift]))
-        run(.wait(forDuration: delay)) { [weak self] in self?.puff(at: home, color: Palette.dust, count: 6) }
+        // The puff rides on the sprite's own actions, so it's cancelled if the mountain goes away first.
+        sprite.run(.sequence([
+            .wait(forDuration: delay),
+            .run { [weak self] in self?.puff(at: home, color: Palette.dust, count: 6) },
+            lift,
+        ]))
     }
 
     /// Dynamite: the mountain bursts apart in a flash and flying rock.

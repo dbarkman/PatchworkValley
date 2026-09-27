@@ -380,7 +380,7 @@ private struct TileTray: View {
                     Button("Rotate", systemImage: "arrow.clockwise") { model.rotate() }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.bordered)
-                    if model.game.isStuck {
+                    if model.game.isStuck && model.game.rules.allowsDiscard {
                         Button("Discard") { model.discard() }
                             .buttonStyle(.borderedProminent)
                             .tint(.orange)
@@ -522,9 +522,9 @@ private struct OverlayCard: View {
             .font(.title2.bold())
         Label("\(model.game.coins) coins earned", systemImage: "centsign.circle.fill")
             .font(.title3.weight(.semibold))
-        Text("+\(CoinEconomy.valleyBonus) more for finishing")
+        Text("+\(CoinEconomy.valleyBonus) finishing bonus added")
             .foregroundStyle(.secondary)
-        if !model.game.nearMisses.isEmpty {
+        if model.offersMoreTiles {
             nearMiss
             continueButton
         }
@@ -535,7 +535,7 @@ private struct OverlayCard: View {
         }
         .buttonStyle(.borderedProminent)
         // When a +3 tiles offer is showing, it leads; moving on is the quieter choice.
-        .tint(model.game.nearMisses.isEmpty ? .accentColor : .secondary)
+        .tint(model.offersMoreTiles ? .secondary : .accentColor)
         .controlSize(.large)
     }
 
