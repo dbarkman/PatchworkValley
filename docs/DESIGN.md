@@ -12,8 +12,8 @@ The menu (top left) switches between three modes; each keeps its own run, so swi
 
 - **Placing:** a tile goes in any open hex touching the valley and can be rotated first. Tapping a spot drops a ghost there in its best rotation, with stitches sewn across each matching seam. Tapping the ghost cycles through the rotations that fit, and **Place** confirms. The player always sees the current tile and the next one.
 - **Terrain:** meadow, forest, field, village and river. Rivers must connect to rivers. The other terrains may touch anything. In Coin mode and Zen, some water tiles are **lakes**: a pond with a single river flowing in, so rivers can end. Levels deal rivers only.
-- **Scoring:** 10 points per matching edge. A perfect fit (six neighbors, all matching) adds 50 points.
-- **Stuck tiles:** a tile that fits nowhere can be discarded, which costs one tile.
+- **Scoring (Levels and Zen):** 10 points per matching edge. A perfect fit (boxed in on every side, every neighbor matching) adds 50 points. Coin mode pays coins instead.
+- **Stuck tiles (Levels and Zen):** a tile that fits nowhere can be discarded, which costs one tile. Coin mode has no discards; see *Win or lose* below.
 
 Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1 and no Zen best. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
 
@@ -52,7 +52,7 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
   With a quest always going, the bot chases quests harder and gets stuck a little more often; a purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
-## Levels (main mode)
+## Levels
 
 - Each level is a fresh valley with a fixed stack of tiles and one or more goals, such as "grow a forest of 9". A goal counts the largest connected region of its terrain.
 - The stack only counts down: no tile quests and no bonus tiles. When the counter reads 3, the level really is almost done.
@@ -74,7 +74,7 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 ## Zen mode
 
-One valley for a high score, starting with 30 tiles. Some tiles carry a quest, for example "grow this forest to 8", which tracks the region connected to that tile. Completing a quest earns `3 + target / 3` tiles and `target × 10` points. A quest fails if its region closes off first. Perfect fits earn one extra tile. The run ends when tiles run out, and the card offers **+5 tiles** and shows the best score.
+One valley for a high score on the open plane (no crater, no match rule), starting with 30 tiles. Some tiles carry a quest, for example "grow this forest to 8", which asks the region the tile joins to grow by that many tiles (see *Quest tiles ask for growth* above). Completing a quest earns `3 + growth / 3` tiles and `target × 10` points. A quest fails if its region closes off first. Perfect fits earn one extra tile. The run ends when tiles run out, and the card offers **+5 tiles** and shows the best score.
 
 ## Monetization
 
@@ -89,8 +89,8 @@ Coin mode builds the habit: players earn coins that get them a little further ea
 
 ## Visual direction
 
-The look is patchwork quilt: tiles resemble fabric patches with stitched seams, and a finished region gets "sewn" together. This gives the game an identity distinct from Dorfromantik. A planned meta layer builds on it: each completed level becomes a patch sewn into the player's growing quilt. The prototype uses flat placeholder art drawn in code.
+The look is patchwork quilt: tiles resemble fabric patches with stitched seams, and a finished region gets "sewn" together. This gives the game an identity distinct from Dorfromantik. A planned meta layer builds on it: each completed level becomes a patch sewn into the player's growing quilt. The prototype uses flat placeholder art drawn in code, and the app icon (`PatchworkValley/Assets.xcassets/AppIcon.appiconset`, one 1024×1024 universal slot) is still empty.
 
 ## Prototype scope
 
-The prototype covers Coin mode (crater, fog, mountains, five power-ups), five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include real-money purchases, the quilt, sound, final art or a tutorial.
+The prototype covers Coin mode (irregular craters, fog, mountains, lakes, a quest always going, five power-ups), five designed levels, Zen mode, the near-miss cards, Reset Player and camera fit. It does not yet include an app icon, real-money purchases, free starter power-ups, the quilt, sound, final art or a tutorial.
