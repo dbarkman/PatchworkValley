@@ -15,7 +15,7 @@ The menu (top left) switches between three modes; each keeps its own run, so swi
 - **Scoring:** 10 points per matching edge. A perfect fit (six neighbors, all matching) adds 50 points.
 - **Stuck tiles:** a tile that fits nowhere can be discarded, which costs one tile.
 
-The menu also restarts the current run. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
+The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1 and no Zen best. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
 
 ## Coin mode
 

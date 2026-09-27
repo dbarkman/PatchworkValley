@@ -96,6 +96,7 @@ final class GameModel {
         static let wallet = "wallet"
         static let level = "level"
         static let zenBest = "zenBest"
+        static let all = [mode, valley, wallet, level, zenBest]
     }
 
     init() {
@@ -332,6 +333,30 @@ final class GameModel {
     }
 
     // MARK: - Valleys
+
+    /// Starts over as a brand-new player: Coin mode, valley 1, the starting wallet,
+    /// level 1 and no Zen best, as if the game were just installed.
+    func resetPlayer() {
+        Key.all.forEach(defaults.removeObject)
+        mode = .coins
+        valley = 1
+        wallet = CoinEconomy.startingWallet
+        coinGame = Self.makeCoinGame(valley: 1)
+        isShowingValleyIntro = true
+        level = 1
+        levelGame = ValleyGame(level: LevelDesigner.level(1))
+        isShowingLevelIntro = true
+        zenBest = 0
+        isNewZenBest = false
+        zenGame = Self.makeZenGame()
+        isAimingDynamite = false
+        undoPoint = nil
+        resetSelection()
+        clearFeedback()
+        haptics.success()
+        scene.sync()
+        scene.recenter()
+    }
 
     func beginValley() {
         isShowingValleyIntro = false

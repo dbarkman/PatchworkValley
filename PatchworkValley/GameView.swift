@@ -111,7 +111,12 @@ private struct TopBar: View {
 /// The mode switch and restart, labeled with where the player is.
 private struct GameMenu: View {
     let model: GameModel
-    @State private var isConfirmingRestart = false
+    @State private var confirming: Confirmation?
+
+    /// The destructive menu actions, which ask first.
+    private enum Confirmation {
+        case restart, resetPlayer
+    }
 
     var body: some View {
         Menu {
@@ -121,7 +126,12 @@ private struct GameMenu: View {
                 }
             }
             Button(restartTitle, systemImage: "arrow.counterclockwise") {
-                isConfirmingRestart = true
+                confirming = .restart
+            }
+            Section {
+                Button("Reset Player", systemImage: "person.crop.circle.badge.xmark", role: .destructive) {
+                    confirming = .resetPlayer
+                }
             }
             #if DEBUG
             Section("Debug") {
@@ -149,10 +159,25 @@ private struct GameMenu: View {
         }
         .animation(.snappy, value: model.level)
         .animation(.snappy, value: model.valley)
-        .confirmationDialog(restartTitle, isPresented: $isConfirmingRestart, titleVisibility: .visible) {
-            Button(restartTitle, role: .destructive) { model.restart() }
-        } message: {
-            Text("This valley will be lost.")
+        .confirmationDialog(
+            confirming == .resetPlayer ? "Start over as a new player?" : restartTitle,
+            isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+            titleVisibility: .visible,
+            presenting: confirming
+        ) { confirmation in
+            switch confirmation {
+            case .restart:
+                Button(restartTitle, role: .destructive) { model.restart() }
+            case .resetPlayer:
+                Button("Reset Player", role: .destructive) { model.resetPlayer() }
+            }
+        } message: { confirmation in
+            switch confirmation {
+            case .restart:
+                Text("This valley will be lost.")
+            case .resetPlayer:
+                Text("Your coins, valley, level and best score go back to the start, as if the game were just installed.")
+            }
         }
     }
 
