@@ -358,6 +358,10 @@ final class GameModel {
         scene.recenter()
     }
 
+    func fitValley() {
+        scene.fitValley()
+    }
+
     func beginValley() {
         isShowingValleyIntro = false
         scene.sync()

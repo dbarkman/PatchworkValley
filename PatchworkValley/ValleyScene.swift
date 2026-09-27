@@ -32,6 +32,11 @@ final class ValleyScene: SKScene {
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.7...3
 
+    /// Where the HUD ends at the top and the tray begins at the bottom, in view points,
+    /// so the camera can frame the valley in the space between them.
+    var hudTop: CGFloat = 0
+    var hudBottom: CGFloat = 0
+
     override init(size: CGSize) {
         super.init(size: size)
         scaleMode = .resizeFill
@@ -83,6 +88,31 @@ final class ValleyScene: SKScene {
             .move(to: .zero, duration: 0.35),
             .scale(to: 1, duration: 0.35),
         ]))
+    }
+
+    /// Zooms and pans so the whole valley (tiles, open spots, and the mountains and
+    /// lakes found so far) fits between the HUD and the tray.
+    func fitValley() {
+        guard let view, let board = model?.game.board else { return }
+        let hexes = Set(board.tiles.keys).union(board.openSlots).union(board.revealedMountains).union(board.revealedLakes)
+        let centers = hexes.map { geometry.center(of: $0) }
+        guard let minX = centers.map(\.x).min(), let maxX = centers.map(\.x).max(),
+              let minY = centers.map(\.y).min(), let maxY = centers.map(\.y).max() else { return }
+        let width = maxX - minX + geometry.tileSize.width
+        let height = maxY - minY + geometry.tileSize.height
+
+        let top = hudTop
+        let bottom = hudBottom > top ? hudBottom : view.bounds.height
+        let freeWidth = max(view.bounds.width - 24, 100)
+        let freeHeight = max(bottom - top - 16, 100)
+        let scale = min(max(width / freeWidth, height / freeHeight, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+
+        // Put the valley's middle in the middle of the free band, not the middle of the screen.
+        let freeMiddle = (top + bottom) / 2
+        let target = CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2 + (freeMiddle - view.bounds.midY) * scale)
+        let move = SKAction.group([.move(to: target, duration: 0.35), .scale(to: scale, duration: 0.35)])
+        move.timingMode = .easeInEaseOut
+        cameraNode.run(move)
     }
 
     private func syncTiles(_ board: Board, placement: PlacementResult?, in view: SKView) {
@@ -450,9 +480,16 @@ final class ValleyScene: SKScene {
         recognizer.setTranslation(.zero, in: view)
     }
 
+    /// Zooms around the point between the fingers, so what's under them stays put.
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+        guard let view = recognizer.view else { return }
+        let fingers = recognizer.location(in: view)
+        let before = convertPoint(fromView: fingers)
         let scale = cameraNode.xScale / recognizer.scale
         cameraNode.setScale(min(max(scale, Self.zoomRange.lowerBound), Self.zoomRange.upperBound))
+        let after = convertPoint(fromView: fingers)
+        cameraNode.position.x += before.x - after.x
+        cameraNode.position.y += before.y - after.y
         recognizer.scale = 1
     }
 }

@@ -21,6 +21,7 @@ struct GameView: View {
 
             VStack(spacing: 12) {
                 TopBar(model: model)
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { model.scene.hudTop = $0 }
                 if model.isAimingDynamite {
                     AimingBanner(model: model)
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -33,6 +34,7 @@ struct GameView: View {
                 Spacer()
                 if model.overlay == nil {
                     TileTray(model: model)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.scene.hudBottom = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -80,7 +82,15 @@ private struct TopBar: View {
                 }
                 TilesLeft(model: model)
             }
-            objectives
+            HStack(alignment: .top, spacing: 8) {
+                objectives
+                Spacer(minLength: 0)
+                Button("Fit valley", systemImage: "arrow.down.right.and.arrow.up.left") { model.fitValley() }
+                    .labelStyle(.iconOnly)
+                    .font(.headline)
+                    .padding(10)
+                    .background(.regularMaterial, in: Circle())
+            }
         }
         .animation(.snappy, value: model.game.goals)
         .animation(.snappy, value: model.game.activeQuests)
