@@ -62,17 +62,21 @@ private struct TopBar: View {
 
     @ViewBuilder private var objectives: some View {
         if model.mode == .levels {
-            HStack(spacing: 8) {
-                ForEach(model.game.goals) { goal in
-                    GoalChip(goal: goal)
-                }
-            }
+            if !model.hasFinishedAllLevels { goals }
         } else if !model.game.activeQuests.isEmpty {
             HStack(spacing: 8) {
                 ForEach(model.game.activeQuests) { quest in
                     QuestChip(quest: quest)
                         .transition(.scale.combined(with: .opacity))
                 }
+            }
+        }
+    }
+
+    private var goals: some View {
+        HStack(spacing: 8) {
+            ForEach(model.game.goals) { goal in
+                GoalChip(goal: goal)
             }
         }
     }
@@ -100,7 +104,7 @@ private struct GameMenu: View {
             }
             #endif
         } label: {
-            Label(model.mode == .levels ? "Level \(model.level)" : "Zen", systemImage: "line.3.horizontal")
+            Label(menuTitle, systemImage: "line.3.horizontal")
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText(value: Double(model.level)))
@@ -116,8 +120,18 @@ private struct GameMenu: View {
         }
     }
 
+    private var menuTitle: String {
+        switch model.mode {
+        case .levels: model.hasFinishedAllLevels ? "Levels" : "Level \(model.level)"
+        case .zen: "Zen"
+        }
+    }
+
     private var restartTitle: String {
-        model.mode == .levels ? "Restart Level" : "New Valley"
+        switch model.mode {
+        case .levels: model.hasFinishedAllLevels ? "Start Over" : "Restart Level"
+        case .zen: "New Valley"
+        }
     }
 }
 
@@ -371,6 +385,7 @@ private struct OverlayCard: View {
             case .levelIntro: levelIntro
             case .levelWon: levelWon
             case .levelLost: levelLost
+            case .allLevelsDone: allLevelsDone
             case .zenOver: zenOver
             }
         }
@@ -414,7 +429,7 @@ private struct OverlayCard: View {
         Button {
             model.nextLevel()
         } label: {
-            Text("Next level").frame(maxWidth: .infinity)
+            Text(model.level < LevelDesigner.levelCount ? "Next level" : "Finish").frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -432,6 +447,25 @@ private struct OverlayCard: View {
         nearMiss
         continueButton
         Button("Retry level") { model.restart() }
+            .buttonStyle(.bordered)
+    }
+
+    @ViewBuilder private var allLevelsDone: some View {
+        Image(systemName: "trophy.fill")
+            .font(.largeTitle)
+            .foregroundStyle(.yellow)
+        Text("All \(LevelDesigner.levelCount) levels done!")
+            .font(.title2.bold())
+        Text("More levels are on the way.")
+            .foregroundStyle(.secondary)
+        Button {
+            model.startOver()
+        } label: {
+            Text("Play again from level 1").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        Button("Try Zen mode") { model.switchMode(to: .zen) }
             .buttonStyle(.bordered)
     }
 

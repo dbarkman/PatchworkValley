@@ -6,70 +6,45 @@ public struct LevelSpec: Hashable, Sendable {
     public let goals: [Goal]
 }
 
-/// Builds levels from their number, no hand design. A bot plays each level's
-/// exact tile stream first, and goals are set to a share of what it reached,
-/// so every level is beatable.
+/// The hand-designed levels. Each level's goals add up to half its stack, and each
+/// level's tile order (its seed) was chosen with `searchSeed` so the bot wins it:
+/// comfortably early on, and only just by level 5.
 public enum LevelDesigner {
-    /// Tile stacks run 12, 18, 24, 30, 36 and repeat: always a multiple of six, one per side of a hex.
-    public static func tileBudget(for level: Int) -> Int {
-        12 + 6 * ((level - 1) % 5)
-    }
+    public static let levels: [LevelSpec] = [
+        LevelSpec(number: 1, seed: 9, tiles: 12, goals: [Goal(terrain: .field, target: 6)]),
+        LevelSpec(number: 2, seed: 1, tiles: 18, goals: [Goal(terrain: .forest, target: 9)]),
+        LevelSpec(number: 3, seed: 7, tiles: 24, goals: [Goal(terrain: .forest, target: 6), Goal(terrain: .field, target: 6)]),
+        LevelSpec(number: 4, seed: 9, tiles: 30, goals: [
+            Goal(terrain: .forest, target: 5), Goal(terrain: .field, target: 5), Goal(terrain: .village, target: 5),
+        ]),
+        LevelSpec(number: 5, seed: 13, tiles: 36, goals: [
+            Goal(terrain: .forest, target: 6), Goal(terrain: .field, target: 5),
+            Goal(terrain: .village, target: 4), Goal(terrain: .water, target: 3),
+        ]),
+    ]
 
-    /// Share of the bot's best the player must reach. Rises with each cycle of five
-    /// levels, and the 36-tile level that closes each cycle is harder still. The bot
-    /// plays greedily, so asking for all of its best is still fair.
-    static func difficulty(for level: Int) -> Double {
-        let cycle = Double((level - 1) / 5)
-        let finale = (level - 1) % 5 == 4 ? 0.1 : 0
-        return min(1, 0.75 + 0.05 * cycle + finale)
-    }
-
-    static func goalCount(level: Int, tiles: Int) -> Int {
-        switch tiles {
-        case ...18: 1
-        case ...30: 2
-        default: level > 10 ? 3 : 2
-        }
-    }
-
-    /// The smallest goal worth asking for.
-    static let minimumTarget = 4
+    public static var levelCount: Int { levels.count }
 
     public static func level(_ number: Int) -> LevelSpec {
-        precondition(number >= 1, "Levels start at 1")
-        let seed = 0x5EED_0000 &+ UInt64(number) &* 0x9E37_79B9_7F4A_7C15
-        let tiles = tileBudget(for: number)
-        let difficulty = difficulty(for: number)
-        // Rivers are scarce, so river goals wait until players know the game.
-        let candidates: [Terrain] = number >= 8 ? [.forest, .field, .village, .water] : [.forest, .field, .village]
-        var rng = SplitMix64(seed: seed ^ 0xA5A5_A5A5)
+        precondition(levels.indices.contains(number - 1), "No level \(number)")
+        return levels[number - 1]
+    }
 
-        // How big each terrain grows on this level's tiles when it is the bot's only focus.
-        let soloReach = Dictionary(uniqueKeysWithValues: candidates.map { terrain in
-            (terrain, GreedyBot.bestRegions(seed: seed, tiles: tiles, focus: [terrain])[terrain, default: 0])
-        })
-        // Only terrains that can grow to a quarter of the stack make interesting goals.
-        let floor = max(minimumTarget, tiles / 4)
-        var viable = candidates.filter { soloReach[$0, default: 0] >= floor }.shuffled(using: &rng)
-        if viable.isEmpty, let best = candidates.max(by: { soloReach[$0, default: 0] < soloReach[$1, default: 0] }) {
-            viable = [best]
-        }
-        var terrains = Array(viable.prefix(goalCount(level: number, tiles: tiles)))
+    /// Tiles the bot has left when it wins `spec`, or nil when it can't win.
+    static func botSpare(for spec: LevelSpec) -> Int? {
+        var game = ValleyGame(level: spec)
+        GreedyBot.play(&game, focus: spec.goals.map(\.terrain))
+        return game.outcome == .won ? game.tilesLeft : nil
+    }
 
-        // Goals share one stack of tiles, so measure them together and drop any that can't hold its own.
-        while true {
-            let reached = GreedyBot.bestRegions(seed: seed, tiles: tiles, focus: terrains)
-            let weak = terrains.filter { reached[$0, default: 0] < minimumTarget }
-            if weak.isEmpty || terrains.count == 1 {
-                let goals = terrains.map { terrain in
-                    let best = reached[terrain, default: 0]
-                    let target = min(best, max(minimumTarget, Int(Double(best) * difficulty)))
-                    return Goal(terrain: terrain, target: max(1, target))
-                }
-                return LevelSpec(number: number, seed: seed, tiles: tiles, goals: goals)
-            }
-            terrains.removeAll { weak.contains($0) }
+    /// Finds the first seed from `start` whose tile order the bot wins with a spare-tile count in `spare`.
+    /// Used by hand when designing levels; see `LevelSeedSearch` in the tests.
+    static func searchSeed(tiles: Int, goals: [Goal], spare: ClosedRange<Int>, start: UInt64 = 1, attempts: Int = 5000) -> UInt64? {
+        for seed in start..<(start + UInt64(attempts)) {
+            let spec = LevelSpec(number: 0, seed: seed, tiles: tiles, goals: goals)
+            if let left = botSpare(for: spec), spare.contains(left) { return seed }
         }
+        return nil
     }
 }
 
@@ -97,7 +72,7 @@ public enum GreedyBot {
         }
     }
 
-    /// The move that grows focus regions most, with matching edges as the tiebreaker.
+    /// The move that grows focus regions most (the first focus terrain most of all), with matching edges as the tiebreaker.
     public static func bestMove(in game: ValleyGame, focus: [Terrain]) -> (slot: Hex, steps: Int)? {
         guard let tile = game.current else { return nil }
         var best: (slot: Hex, steps: Int, value: Int)?
@@ -108,8 +83,10 @@ public enum GreedyBot {
                 let evaluation = game.board.evaluate(turned, at: slot)
                 guard evaluation.isLegal else { continue }
                 var value = evaluation.matchingEdges.count
-                for terrain in focus where turned.contains(terrain) {
-                    value += 4 * game.board.region(of: terrain, from: slot, placing: turned).count
+                for (index, terrain) in focus.enumerated() where turned.contains(terrain) {
+                    // The first focus terrain is the main goal, so it counts double.
+                    let weight = index == 0 ? 8 : 4
+                    value += weight * game.board.region(of: terrain, from: slot, placing: turned).count
                 }
                 if value > (best?.value ?? -1) {
                     best = (slot, steps, value)

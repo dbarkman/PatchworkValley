@@ -281,34 +281,25 @@ private let east = Hex(1, 0)
 }
 
 @Suite struct LevelTests {
-    @Test func tileBudgetsStepBySixAndRepeat() {
-        #expect((1...6).map(LevelDesigner.tileBudget) == [12, 18, 24, 30, 36, 12])
-    }
-
-    @Test func sameNumberBuildsTheSameLevel() {
-        #expect(LevelDesigner.level(7) == LevelDesigner.level(7))
-        #expect(LevelDesigner.level(7) != LevelDesigner.level(8))
-    }
-
-    @Test func goalsAreDistinctAndWorthPlaying() {
-        for number in 1...30 {
-            let level = LevelDesigner.level(number)
-            #expect(!level.goals.isEmpty)
-            #expect(Set(level.goals.map(\.terrain)).count == level.goals.count)
-            #expect(level.goals.allSatisfy { $0.target >= 1 })
-            if number < 8 {
-                #expect(!level.goals.contains { $0.terrain == .water })
-            }
+    @Test func fiveLevelsWithGoalsAddingUpToHalfTheStack() {
+        #expect(LevelDesigner.levels.map(\.tiles) == [12, 18, 24, 30, 36])
+        #expect(LevelDesigner.levels.map(\.number) == [1, 2, 3, 4, 5])
+        for level in LevelDesigner.levels {
+            #expect(level.goals.map(\.target).reduce(0, +) == level.tiles / 2, "Level \(level.number)")
+            #expect(Set(level.goals.map(\.terrain)).count == level.goals.count, "Level \(level.number) repeats a terrain")
         }
     }
 
-    /// Every level is built from what the bot reached on its exact tiles, so the bot must win it.
-    @Test(arguments: 1...40)
-    func botBeatsEveryLevel(number: Int) {
-        let level = LevelDesigner.level(number)
-        var game = ValleyGame(level: level)
-        GreedyBot.play(&game, focus: level.goals.map(\.terrain))
-        #expect(game.outcome == .won, "Level \(number) goals: \(level.goals.map { "\($0.terrain) \($0.target)" })")
+    /// Each level's tile order was picked so the bot wins it; this catches rule changes that break that.
+    @Test(arguments: LevelDesigner.levels)
+    func botBeatsEveryLevel(level: LevelSpec) {
+        #expect(LevelDesigner.botSpare(for: level) != nil, "Level \(level.number) is no longer beatable by the bot")
+    }
+
+    @Test func laterLevelsLeaveTheBotLessToSpare() {
+        let spares = LevelDesigner.levels.compactMap(LevelDesigner.botSpare)
+        #expect(spares.count == LevelDesigner.levelCount)
+        #expect(spares.first! > spares.last!)
     }
 
     @Test func levelStacksOnlyCountDown() {

@@ -11,12 +11,23 @@ The menu (top left) switches between Levels and Zen and restarts the current run
 
 ## Levels (main mode)
 
-- Each level is a fresh valley with a fixed stack of tiles and one to three goals, such as "grow a forest of 12". A goal counts the largest connected region of its terrain.
+- Each level is a fresh valley with a fixed stack of tiles and one or more goals, such as "grow a forest of 9". A goal counts the largest connected region of its terrain.
 - The stack only counts down: no tile quests and no bonus tiles. When the counter reads 3, the level really is almost done.
 - **Winning:** the level ends as soon as every goal is met. Each unused tile is worth 25 points. The player's level number is saved.
-- **Losing:** the level ends when tiles run out with a goal unmet. The card shows each goal's progress and the closest miss ("So close! Your field was 2 tiles short of 5"), and offers **+3 tiles** or a retry. That offer is the main moment the game sells.
-- **Stack sizes** run 12, 18, 24, 30, 36 and then repeat. Every stack is a multiple of six, one per side of a hex, a quiet nod players may or may not notice. The short levels after each 36 act as breathers.
-- **Generated levels:** `LevelDesigner` builds each level from its number, with no hand design. A greedy bot (`GreedyBot`) plays the level's exact tile stream, and goals are set to a share of the regions it reached: 75% at first, rising 5% every five levels, plus 10% on each 36-tile finale, capped at 100%. The bot is a modest player, so every level is provably beatable and a thoughtful player has room to spare. River goals start at level 8.
+- **Losing:** the level ends when tiles run out with a goal unmet. The card shows each goal's progress and the closest miss ("So close! Your field was 2 tiles short of 6"), and offers **+3 tiles** or a retry. That offer is the main moment the game sells.
+- **Difficulty is tightness:** how many tiles you get for the size of the goals. Every level's goals add up to half its stack.
+
+| Level | Tiles | Goals | Bot's spare tiles |
+|---|---|---|---|
+| 1 | 12 | Field 6 | 4 |
+| 2 | 18 | Forest 9 | 4 |
+| 3 | 24 | Forest 6, field 6 | 1 |
+| 4 | 30 | Forest 5, field 5, village 5 | 1 |
+| 5 | 36 | Forest 6, field 5, village 4, river 3 | 1 |
+
+- **Tile order is designed too.** Each level has a fixed seed, so it deals the same tiles every time. Seeds are picked with `LevelDesigner.searchSeed`, which finds a tile order the greedy bot (`GreedyBot`) wins with a chosen number of tiles to spare: comfortable early on, and only just by level 3. To design or change a level, enable the `findLevelSeeds` test, run it, and copy the seeds it prints.
+- After level 5, a card congratulates the player and offers to play again from level 1 or to try Zen.
+- Unlimited levels are the long-term goal. New ingredients (power-ups, new terrains, obstacles) will keep them fresh.
 
 ## Zen mode
 
@@ -39,4 +50,4 @@ The look is patchwork quilt: tiles resemble fabric patches with stitched seams, 
 
 ## Prototype scope
 
-The prototype covers generated levels with goals, Zen mode, the near-miss cards and free continues. It does not yet include purchases, coins, the quilt, sound, final art or a tutorial.
+The prototype covers five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include purchases, coins, the quilt, sound, final art or a tutorial.

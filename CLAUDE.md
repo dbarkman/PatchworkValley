@@ -4,8 +4,8 @@ A calm iOS puzzle game. Players place hex landscape tiles and match edges. **Lev
 
 ## Layout
 
-- `ValleyCore/` is a Swift package that holds every game rule: the hex grid, tiles, the seeded tile generator, the board, scoring, quests, goals and run state (`ValleyGame`), plus level generation (`LevelDesigner`) and the bot that makes levels fair (`GreedyBot`). It is pure Swift with no SpriteKit, SwiftUI or UIKit imports, and it builds for iOS and macOS.
-- Level generation must stay deterministic: the same level number always builds the same level. The tile stream never depends on player actions, and the bot sorts slots before choosing, because `Set` order changes every launch.
+- `ValleyCore/` is a Swift package that holds every game rule: the hex grid, tiles, the seeded tile generator, the board, scoring, quests, goals and run state (`ValleyGame`), plus the designed levels (`LevelDesigner`) and the bot that proves each level beatable (`GreedyBot`). It is pure Swift with no SpriteKit, SwiftUI or UIKit imports, and it builds for iOS and macOS.
+- Levels must stay deterministic: a level's seed always deals the same tiles. The tile stream never depends on player actions, and the bot sorts slots before choosing, because `Set` order changes every launch. Tests fail if a rule change makes any level unbeatable for the bot; if that happens, re-pick seeds with the disabled `findLevelSeeds` test.
 - `PatchworkValley/` is the app: a SwiftUI HUD over a SpriteKit board.
   - `GameModel` is the `@Observable` owner of both modes' runs, the saved level number and Zen best, and the player's in-progress choice (selected slot, rotation). It calls `scene.sync` after every change.
   - `ValleyScene` only renders. `sync(placement:)` reconciles its nodes with the model, and its gestures call into the model.

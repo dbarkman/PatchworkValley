@@ -15,7 +15,7 @@ enum GameMode: String, CaseIterable, Identifiable {
 
 /// The card covering the board, if any.
 enum Overlay: Equatable {
-    case levelIntro, levelWon, levelLost, zenOver
+    case levelIntro, levelWon, levelLost, allLevelsDone, zenOver
 }
 
 /// Short feedback shown over the board after a notable placement.
@@ -36,7 +36,7 @@ struct TileGain: Equatable {
 @Observable
 final class GameModel {
     private(set) var mode: GameMode
-    /// The level being played, or the next one up after a win.
+    /// The level being played, or the next one up after a win. One past the last level means all are done.
     private(set) var level: Int
     private(set) var zenBest: Int
     /// The current Zen run beat the saved best.
@@ -64,11 +64,11 @@ final class GameModel {
 
     init() {
         let defaults = UserDefaults.standard
-        let level = max(1, defaults.integer(forKey: Key.level))
+        let level = min(max(1, defaults.integer(forKey: Key.level)), LevelDesigner.levelCount + 1)
         mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .levels
         self.level = level
         zenBest = defaults.integer(forKey: Key.zenBest)
-        levelGame = ValleyGame(level: LevelDesigner.level(level))
+        levelGame = ValleyGame(level: LevelDesigner.level(min(level, LevelDesigner.levelCount)))
         zenGame = Self.makeZenGame()
         scene = ValleyScene(size: CGSize(width: 390, height: 844))
         scene.model = self
@@ -86,8 +86,11 @@ final class GameModel {
         }
     }
 
+    var hasFinishedAllLevels: Bool { level > LevelDesigner.levelCount }
+
     var overlay: Overlay? {
-        switch (mode, game.outcome) {
+        if mode == .levels && hasFinishedAllLevels { return .allLevelsDone }
+        return switch (mode, game.outcome) {
         case (.levels, .playing): isShowingLevelIntro ? .levelIntro : nil
         case (.levels, .won): .levelWon
         case (.levels, .outOfTiles): .levelLost
@@ -178,7 +181,8 @@ final class GameModel {
     func restart() {
         switch mode {
         case .levels:
-            startLevel(level)
+            // Once every level is done, restarting means starting over.
+            startLevel(hasFinishedAllLevels ? 1 : level, canRewindProgress: hasFinishedAllLevels)
         case .zen:
             zenGame = Self.makeZenGame()
             isNewZenBest = false
@@ -190,12 +194,23 @@ final class GameModel {
     }
 
     func nextLevel() {
+        guard level < LevelDesigner.levelCount else {
+            level = LevelDesigner.levelCount + 1
+            defaults.set(level, forKey: Key.level)
+            haptics.success()
+            return
+        }
         startLevel(level + 1)
+    }
+
+    /// Replays the levels from the first one.
+    func startOver() {
+        startLevel(1, canRewindProgress: true)
     }
 
     #if DEBUG
     func debugJump(to number: Int) {
-        startLevel(max(1, number), canRewindProgress: true)
+        startLevel(min(max(1, number), LevelDesigner.levelCount), canRewindProgress: true)
     }
     #endif
 
