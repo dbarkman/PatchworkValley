@@ -40,7 +40,9 @@ public struct TileGenerator: Sendable {
     public mutating func makeTile(allowQuest: Bool, questBase: Int) -> Tile {
         var edges = makeLandEdges()
         if chance(riverChance) { addRiver(to: &edges) }
-        let quest = allowQuest && chance(questChance) ? makeQuest(for: edges, base: questBase) : nil
+        // Always roll, so the tile stream never depends on what the player did.
+        let rolledQuest = chance(questChance)
+        let quest = allowQuest && rolledQuest ? makeQuest(for: edges, base: questBase) : nil
         defer { nextID += 1 }
         return Tile(id: nextID, edges: edges, quest: quest)
     }

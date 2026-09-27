@@ -10,10 +10,21 @@ public struct Rules: Sendable {
     public var questChance = 0.22
     public var maxActiveQuests = 3
     public var continueTiles = 5
-    /// A quest this many tiles or fewer from done counts as a near miss when the run ends.
+    /// A goal or quest this many tiles or fewer from done counts as a near miss when tiles run out.
     public var nearMissGap = 3
+    /// Points for each tile left over when a level's goals are met.
+    public var unusedTileBonus = 25
 
     public init() {}
+
+    /// Level play: no tile-carried quests and no bonus tiles, so the stack only counts down.
+    public static var levels: Rules {
+        var rules = Rules()
+        rules.questChance = 0
+        rules.perfectBonusTiles = 0
+        rules.continueTiles = 3
+        return rules
+    }
 
     /// Quest targets grow as the valley grows.
     public func questBase(afterPlacing placed: Int) -> Int { 4 + placed / 10 }
@@ -21,6 +32,7 @@ public struct Rules: Sendable {
     public func questPoints(for target: Int) -> Int { target * 10 }
 }
 
+/// A Zen-mode quest carried by a tile. It tracks the region touching the tile it came on.
 public struct Quest: Hashable, Sendable, Identifiable {
     public enum Status: Hashable, Sendable { case active, completed, failed }
 
@@ -36,6 +48,37 @@ public struct Quest: Hashable, Sendable, Identifiable {
     public var remaining: Int { max(0, target - progress) }
 }
 
+/// A level objective: grow any one connected region of `terrain` to `target` tiles.
+public struct Goal: Hashable, Sendable, Identifiable {
+    public let terrain: Terrain
+    public let target: Int
+    /// Size of the largest region of `terrain`, frozen once the goal is met.
+    public internal(set) var progress = 0
+
+    public init(terrain: Terrain, target: Int) {
+        self.terrain = terrain
+        self.target = target
+    }
+
+    public var id: Terrain { terrain }
+    public var isMet: Bool { progress >= target }
+    public var remaining: Int { max(0, target - progress) }
+}
+
+/// An unfinished goal or quest that was close when the tiles ran out.
+public struct NearMiss: Hashable, Sendable {
+    public let terrain: Terrain
+    public let remaining: Int
+    public let target: Int
+}
+
+public enum Outcome: Hashable, Sendable {
+    case playing
+    /// Every goal is met. Only levels have goals, so only levels are won.
+    case won
+    case outOfTiles
+}
+
 /// What one placement did, for scoring feedback and animation.
 public struct PlacementResult: Sendable {
     public let hex: Hex
@@ -45,10 +88,14 @@ public struct PlacementResult: Sendable {
     public let tilesAwarded: Int
     public let completedQuests: [Quest]
     public let failedQuests: [Quest]
+    /// Goals this placement finished.
+    public let metGoals: [Goal]
+    /// Unused-tile bonus, paid when this placement won the level.
+    public let bonusPoints: Int
 }
 
-/// One run of Patchwork Valley. Place tiles until none are left; quests and
-/// perfect fits earn more tiles.
+/// One run of Patchwork Valley: a level (fixed tiles, goals to meet) or Zen
+/// (quests earn more tiles; play until they run out).
 public struct ValleyGame: Sendable {
     public let rules: Rules
     public private(set) var board: Board
@@ -56,34 +103,51 @@ public struct ValleyGame: Sendable {
     /// Tiles still to play, including the current one.
     public private(set) var tilesLeft: Int
     public private(set) var tilesPlaced = 0
-    /// Every quest this run, in the order started.
+    /// Every Zen quest this run, in the order started.
     public private(set) var quests: [Quest] = []
+    public private(set) var goals: [Goal]
     private var queue: [Tile] = []
     private var generator: TileGenerator
 
-    public init(seed: UInt64, rules: Rules = Rules()) {
+    public init(seed: UInt64, rules: Rules = Rules(), goals: [Goal] = []) {
         var generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance)
         self.rules = rules
         board = Board(starter: generator.makeStarterTile())
         self.generator = generator
         tilesLeft = rules.startingTiles
+        self.goals = goals
+        refreshGoals()
         refillQueue()
     }
 
+    public init(level: LevelSpec) {
+        var rules = Rules.levels
+        rules.startingTiles = level.tiles
+        self.init(seed: level.seed, rules: rules, goals: level.goals)
+    }
+
     /// Starts from a prepared board and tile queue. Tests use this to set up exact situations.
-    init(rules: Rules = Rules(), board: Board, queue: [Tile], tilesLeft: Int, seed: UInt64 = 1) {
+    init(rules: Rules = Rules(), board: Board, queue: [Tile], tilesLeft: Int, goals: [Goal] = [], seed: UInt64 = 1) {
         self.rules = rules
         self.board = board
         self.queue = queue
         self.tilesLeft = tilesLeft
+        self.goals = goals
         generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance)
+        refreshGoals()
         refillQueue()
     }
 
     public var current: Tile? { queue.first }
     public var next: Tile? { queue.dropFirst().first }
-    public var isGameOver: Bool { tilesLeft == 0 }
     public var activeQuests: [Quest] { quests.filter { $0.status == .active } }
+
+    public var outcome: Outcome {
+        if !goals.isEmpty && goals.allSatisfy(\.isMet) { return .won }
+        return tilesLeft == 0 ? .outOfTiles : .playing
+    }
+
+    public var isOver: Bool { outcome != .playing }
 
     /// The current tile fits nowhere, in any rotation.
     public var isStuck: Bool {
@@ -91,9 +155,11 @@ public struct ValleyGame: Sendable {
         return !board.hasLegalPlacement(for: current)
     }
 
-    /// Active quests that were close when the run ended, closest first.
-    public var nearMisses: [Quest] {
-        activeQuests
+    /// Unfinished goals and quests within `nearMissGap` tiles of done, closest first.
+    public var nearMisses: [NearMiss] {
+        let fromGoals = goals.filter { !$0.isMet }.map { NearMiss(terrain: $0.terrain, remaining: $0.remaining, target: $0.target) }
+        let fromQuests = activeQuests.map { NearMiss(terrain: $0.terrain, remaining: $0.remaining, target: $0.target) }
+        return (fromGoals + fromQuests)
             .filter { (1...rules.nearMissGap).contains($0.remaining) }
             .sorted { $0.remaining < $1.remaining }
     }
@@ -112,10 +178,10 @@ public struct ValleyGame: Sendable {
         queue[0].rotateClockwise(steps)
     }
 
-    /// Places the current tile. Returns nil and changes nothing when the placement is illegal.
+    /// Places the current tile. Returns nil and changes nothing when the run is over or the placement is illegal.
     @discardableResult
     public mutating func placeCurrent(at hex: Hex) -> PlacementResult? {
-        guard let tile = current else { return nil }
+        guard outcome == .playing, let tile = current else { return nil }
         let evaluation = board.evaluate(tile, at: hex)
         guard evaluation.isLegal else { return nil }
 
@@ -148,8 +214,11 @@ public struct ValleyGame: Sendable {
             }
         }
 
-        score += earned
+        let metGoals = refreshGoals()
         tilesLeft += awarded
+        let bonus = outcome == .won ? tilesLeft * rules.unusedTileBonus : 0
+
+        score += earned + bonus
         refillQueue()
 
         return PlacementResult(
@@ -159,23 +228,36 @@ public struct ValleyGame: Sendable {
             points: earned,
             tilesAwarded: awarded,
             completedQuests: completed,
-            failedQuests: failed
+            failedQuests: failed,
+            metGoals: metGoals,
+            bonusPoints: bonus
         )
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.
     public mutating func discardCurrent() {
-        guard isStuck else { return }
+        guard outcome == .playing, isStuck else { return }
         queue.removeFirst()
         tilesLeft -= 1
         refillQueue()
     }
 
-    /// Adds tiles to a finished run so it keeps going.
+    /// Adds tiles to a run that ran out so it keeps going.
     public mutating func continueRun(adding count: Int? = nil) {
-        guard isGameOver else { return }
+        guard outcome == .outOfTiles else { return }
         tilesLeft += count ?? rules.continueTiles
         refillQueue()
+    }
+
+    /// Updates unmet goals from the board and returns the ones that just became met.
+    @discardableResult
+    private mutating func refreshGoals() -> [Goal] {
+        var newlyMet: [Goal] = []
+        for index in goals.indices where !goals[index].isMet {
+            goals[index].progress = board.largestRegion(of: goals[index].terrain).count
+            if goals[index].isMet { newlyMet.append(goals[index]) }
+        }
+        return newlyMet
     }
 
     private mutating func refillQueue() {

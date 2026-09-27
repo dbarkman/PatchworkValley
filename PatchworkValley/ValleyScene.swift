@@ -100,7 +100,7 @@ final class ValleyScene: SKScene {
     }
 
     private func syncSlots(_ game: ValleyGame, in view: SKView) {
-        let open = game.isGameOver ? [] : game.board.openSlots
+        let open = game.isOver ? [] : game.board.openSlots
         for (hex, sprite) in slotSprites where !open.contains(hex) {
             slotSprites[hex] = nil
             sprite.run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
@@ -188,12 +188,23 @@ final class ValleyScene: SKScene {
             floatText("+\(placement.points)", at: CGPoint(x: center.x, y: center.y + geometry.radius * 0.4))
         }
         for quest in placement.completedQuests {
-            let anchor = geometry.center(of: quest.anchor)
-            for hex in board.region(of: quest.terrain, from: quest.anchor) {
-                let spot = geometry.center(of: hex)
-                let distance = hypot(spot.x - anchor.x, spot.y - anchor.y)
-                flash(at: spot, delay: distance / (geometry.radius * 12), in: view)
-            }
+            flash(board.region(of: quest.terrain, from: quest.anchor), from: quest.anchor, in: view)
+        }
+        for goal in placement.metGoals {
+            flash(board.largestRegion(of: goal.terrain), from: placement.hex, in: view)
+        }
+        if model?.game.outcome == .won {
+            flash(Set(board.tiles.keys), from: placement.hex, in: view, delay: 0.35)
+        }
+    }
+
+    /// Ripples a white flash across `region`, spreading out from `origin`.
+    private func flash(_ region: Set<Hex>, from origin: Hex, in view: SKView, delay: TimeInterval = 0) {
+        let anchor = geometry.center(of: origin)
+        for hex in region {
+            let spot = geometry.center(of: hex)
+            let distance = hypot(spot.x - anchor.x, spot.y - anchor.y)
+            flash(at: spot, delay: delay + distance / (geometry.radius * 12), in: view)
         }
     }
 
@@ -237,8 +248,10 @@ final class ValleyScene: SKScene {
     private func texture(for edges: [Terrain], in view: SKView) -> SKTexture {
         if let cached = tileTextures[edges] { return cached }
         let art = SKNode()
-        for layer in TileDrawing.layers(for: edges, geometry: geometry) {
+        // The view ignores sibling order, so each layer gets an explicit depth.
+        for (depth, layer) in TileDrawing.layers(for: edges, geometry: geometry).enumerated() {
             let shape = SKShapeNode(path: layer.path)
+            shape.zPosition = CGFloat(depth)
             shape.fillColor = layer.fill ?? .clear
             shape.strokeColor = layer.stroke ?? .clear
             shape.lineWidth = layer.lineWidth
@@ -289,6 +302,10 @@ private final class GhostNode: SKNode {
         outline.lineWidth = 3
         outline.fillColor = .clear
         super.init()
+        // The view ignores sibling order, so depth is explicit: art, then outline, then stitches on top.
+        sprite.zPosition = 0
+        outline.zPosition = 1
+        stitches.zPosition = 2
         addChild(sprite)
         addChild(outline)
         addChild(stitches)
@@ -347,6 +364,7 @@ private final class GhostNode: SKNode {
         thread.strokeColor = Palette.stitch
         thread.lineWidth = 3
         thread.lineCap = .round
+        thread.zPosition = 1
 
         let stitch = SKNode()
         stitch.addChild(shadow)
@@ -384,6 +402,7 @@ private final class QuestBadge: SKNode {
         label.verticalAlignmentMode = .center
         label.horizontalAlignmentMode = .center
         label.text = "\(quest.remaining)"
+        label.zPosition = 1
         addChild(label)
     }
 

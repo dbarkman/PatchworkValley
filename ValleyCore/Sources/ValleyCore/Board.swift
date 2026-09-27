@@ -63,15 +63,36 @@ public struct Board: Sendable {
 
     /// Hexes joined to `start` through touching edges of `terrain`.
     public func region(of terrain: Terrain, from start: Hex) -> Set<Hex> {
-        guard let startTile = tiles[start], startTile.contains(terrain) else { return [] }
+        region(of: terrain, from: start) { tiles[$0] }
+    }
+
+    /// The region `tile` would join if it were placed at `hex`, without placing it.
+    public func region(of terrain: Terrain, from hex: Hex, placing tile: Tile) -> Set<Hex> {
+        region(of: terrain, from: hex) { $0 == hex ? tile : tiles[$0] }
+    }
+
+    /// The biggest connected region of `terrain` anywhere on the board.
+    public func largestRegion(of terrain: Terrain) -> Set<Hex> {
+        var seen: Set<Hex> = []
+        var largest: Set<Hex> = []
+        for (hex, tile) in tiles where tile.contains(terrain) && !seen.contains(hex) {
+            let region = region(of: terrain, from: hex)
+            seen.formUnion(region)
+            if region.count > largest.count { largest = region }
+        }
+        return largest
+    }
+
+    private func region(of terrain: Terrain, from start: Hex, lookup: (Hex) -> Tile?) -> Set<Hex> {
+        guard let startTile = lookup(start), startTile.contains(terrain) else { return [] }
         var region: Set<Hex> = [start]
         var pending = [start]
         while let hex = pending.popLast() {
-            guard let tile = tiles[hex] else { continue }
+            guard let tile = lookup(hex) else { continue }
             for direction in 0..<6 where tile.edge(direction) == terrain {
                 let next = hex.neighbor(direction)
                 guard !region.contains(next),
-                      let nextTile = tiles[next],
+                      let nextTile = lookup(next),
                       nextTile.edge(Hex.opposite(direction)) == terrain else { continue }
                 region.insert(next)
                 pending.append(next)

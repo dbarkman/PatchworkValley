@@ -173,7 +173,7 @@ private let east = Hex(1, 0)
         var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [questTile], tilesLeft: 1)
         let placed = game.placeCurrent(at: east)
         try #require(placed != nil)
-        #expect(game.isGameOver)
+        #expect(game.outcome == .outOfTiles)
         #expect(game.current == nil)
         #expect(game.nearMisses.map(\.remaining) == [1])
     }
@@ -182,7 +182,7 @@ private let east = Hex(1, 0)
         var game = ValleyGame(board: Board(starter: tile("mmmmmm", id: 0)), queue: [tile("mmmmmm")], tilesLeft: 1)
         let placed = game.placeCurrent(at: east)
         try #require(placed != nil)
-        #expect(game.isGameOver)
+        #expect(game.outcome == .outOfTiles)
         game.continueRun()
         #expect(game.tilesLeft == game.rules.continueTiles)
         #expect(game.current != nil)
@@ -207,7 +207,7 @@ private let east = Hex(1, 0)
         var lastScore = 0
         var moves = 0
 
-        while !game.isGameOver && moves < 400 {
+        while !game.isOver && moves < 400 {
             moves += 1
             guard let current = game.current else {
                 Issue.record("A run with tiles left has no current tile")
@@ -233,7 +233,7 @@ private let east = Hex(1, 0)
             #expect(game.tilesLeft >= 0)
             #expect(game.board.tiles.count == game.tilesPlaced + 1)
             #expect(game.activeQuests.count <= game.rules.maxActiveQuests)
-            #expect((game.current == nil) == game.isGameOver)
+            #expect((game.current == nil) == (game.tilesLeft == 0))
             for quest in game.activeQuests {
                 #expect(quest.progress < quest.target)
             }
@@ -277,5 +277,89 @@ private let east = Hex(1, 0)
         let starter = generator.makeStarterTile()
         #expect(!starter.contains(.water))
         #expect(starter.quest == nil)
+    }
+}
+
+@Suite struct LevelTests {
+    @Test func tileBudgetsStepBySixAndRepeat() {
+        #expect((1...6).map(LevelDesigner.tileBudget) == [12, 18, 24, 30, 36, 12])
+    }
+
+    @Test func sameNumberBuildsTheSameLevel() {
+        #expect(LevelDesigner.level(7) == LevelDesigner.level(7))
+        #expect(LevelDesigner.level(7) != LevelDesigner.level(8))
+    }
+
+    @Test func goalsAreDistinctAndWorthPlaying() {
+        for number in 1...30 {
+            let level = LevelDesigner.level(number)
+            #expect(!level.goals.isEmpty)
+            #expect(Set(level.goals.map(\.terrain)).count == level.goals.count)
+            #expect(level.goals.allSatisfy { $0.target >= 1 })
+            if number < 8 {
+                #expect(!level.goals.contains { $0.terrain == .water })
+            }
+        }
+    }
+
+    /// Every level is built from what the bot reached on its exact tiles, so the bot must win it.
+    @Test(arguments: 1...40)
+    func botBeatsEveryLevel(number: Int) {
+        let level = LevelDesigner.level(number)
+        var game = ValleyGame(level: level)
+        GreedyBot.play(&game, focus: level.goals.map(\.terrain))
+        #expect(game.outcome == .won, "Level \(number) goals: \(level.goals.map { "\($0.terrain) \($0.target)" })")
+    }
+
+    @Test func levelStacksOnlyCountDown() {
+        let level = LevelDesigner.level(4)
+        var game = ValleyGame(level: level)
+        var last = game.tilesLeft
+        while !game.isOver {
+            guard let move = GreedyBot.bestMove(in: game, focus: []) else {
+                game.discardCurrent()
+                continue
+            }
+            game.rotateCurrent(clockwiseSteps: move.steps)
+            let placed = game.placeCurrent(at: move.slot)
+            #expect(placed?.tilesAwarded == 0)
+            #expect(game.tilesLeft < last)
+            last = game.tilesLeft
+        }
+        #expect(game.quests.isEmpty)
+    }
+
+    @Test func winningPaysForUnusedTilesAndEndsTheLevel() throws {
+        let goal = Goal(terrain: .forest, target: 2)
+        var game = ValleyGame(rules: .levels, board: Board(starter: tile("ffffff", id: 0)), queue: [tile("mmmfmm")], tilesLeft: 5, goals: [goal])
+        #expect(game.goals.first?.progress == 1)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.metGoals.map(\.terrain) == [.forest])
+        #expect(game.outcome == .won)
+        #expect(result.bonusPoints == 4 * game.rules.unusedTileBonus)
+        #expect(game.score == result.points + result.bonusPoints)
+
+        let after = game.placeCurrent(at: Hex(-1, 0))
+        #expect(after == nil)
+    }
+
+    @Test func runningOutWithAGoalCloseIsANearMiss() {
+        let goal = Goal(terrain: .forest, target: 3)
+        var game = ValleyGame(rules: .levels, board: Board(starter: tile("ffffff", id: 0)), queue: [tile("mmmfmm")], tilesLeft: 1, goals: [goal])
+        game.placeCurrent(at: east)
+        #expect(game.outcome == .outOfTiles)
+        #expect(game.nearMisses == [NearMiss(terrain: .forest, remaining: 1, target: 3)])
+        game.continueRun()
+        #expect(game.tilesLeft == game.rules.continueTiles)
+        #expect(game.outcome == .playing)
+    }
+
+    @Test func largestRegionFindsTheBiggestPatch() {
+        var board = Board(starter: tile("ffffff", id: 0))
+        board.place(tile("mmmfmm", id: 1), at: east)
+        board.place(tile("ffffff", id: 2), at: Hex(-3, 0))
+        #expect(board.largestRegion(of: .forest) == [.origin, east])
+        #expect(board.largestRegion(of: .village).isEmpty)
     }
 }
