@@ -58,8 +58,8 @@ public struct TileGenerator: Sendable {
 
     /// Maybe gives `tile` a quest, sized so the tiles still to come can finish it.
     /// `supply` counts the upcoming tiles that carry each terrain.
-    public mutating func assignQuest(to tile: Tile, base: Int, supply: [Terrain: Int]) -> Tile {
-        guard chance(questChance) else { return tile }
+    public mutating func assignQuest(to tile: Tile, base: Int, supply: [Terrain: Int], force: Bool = false) -> Tile {
+        guard force || chance(questChance) else { return tile }
         var options: [(QuestSpec, Int)] = []
         for terrain in Terrain.questable where tile.contains(terrain) {
             let sides = tile.edges.filter { $0 == terrain }.count
@@ -133,7 +133,13 @@ public struct TileGenerator: Sendable {
         Double.random(in: 0..<1, using: &rng) < probability
     }
 
-    private mutating func pick<T>(_ weighted: [(T, Int)]) -> T {
+    /// A random whole number in `range`, from this generator's stream.
+    public mutating func roll(_ range: ClosedRange<Int>) -> Int {
+        Int.random(in: range, using: &rng)
+    }
+
+    /// Picks one value, each as likely as its weight.
+    public mutating func pick<T>(_ weighted: [(T, Int)]) -> T {
         let total = weighted.reduce(0) { $0 + $1.1 }
         var roll = Int.random(in: 0..<total, using: &rng)
         for (value, weight) in weighted {

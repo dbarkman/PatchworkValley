@@ -794,3 +794,59 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         #expect(ValleyGame(seed: 12, rules: .coins(valley: 1)).board.lakes.count == 2)
     }
 }
+
+@Suite struct AlwaysAQuestTests {
+    /// A Coin valley always has a quest going, or one on a tile in view, from the first move to the last.
+    @Test(arguments: 1...20)
+    func coinValleysNeverRunOutOfQuests(seed: UInt64) {
+        var game = ValleyGame(seed: seed, rules: .coins(valley: 1))
+        var dry = 0
+        while !game.isOver {
+            let questInView = game.current?.quest != nil || game.next?.quest != nil
+            if game.activeQuests.isEmpty && !questInView { dry += 1 }
+            let focus = game.activeQuests.map(\.terrain)
+            guard let move = GreedyBot.bestMove(in: game, focus: focus) else { break }
+            game.rotateCurrent(clockwiseSteps: move.steps)
+            game.placeCurrent(at: move.slot)
+        }
+        // Only when nothing on the board can grow and the owed quest waits for the next tile.
+        #expect(dry <= 2, "seed \(seed) went \(dry) turns with no quest")
+    }
+
+    @Test func boardQuestsGrowTheBigRegionYouBuilt() {
+        let floor = Set(Hex.within(radius: 4))
+        let crater = Crater(radius: 4, floor: floor, rim: Set(Hex.within(radius: 5)).subtracting(floor), peaks: [])
+        var board = Board(starter: tile("vvvvvv", id: 0), crater: crater, requiresMatch: true)
+        for (index, hex) in [east, Hex(1, -1), Hex(0, -1)].enumerated() {
+            board.place(tile("vvvvvv", id: 1 + index), at: hex)
+        }
+        let village = Array(repeating: tile("vvvvvv"), count: 10).enumerated().map { Tile(id: 20 + $0.offset, edges: $0.element.edges) }
+        let game = ValleyGame(rules: .coins(valley: 1), board: board, queue: village, tilesLeft: 10)
+        let quest = game.activeQuests.first
+        #expect(quest?.terrain == .village)
+        #expect(quest?.start == 4)
+        #expect(quest.map { $0.target - $0.start } ?? 0 >= 2)
+        #expect(quest.map { $0.id < 0 } == true, "board quests use negative ids")
+    }
+
+    @Test func boardQuestRewardsFollowTheGrowthAskedFor() throws {
+        let floor = Set(Hex.within(radius: 4))
+        let crater = Crater(radius: 4, floor: floor, rim: [], peaks: [])
+        var board = Board(starter: tile("vvvvvv", id: 0), crater: crater, requiresMatch: true)
+        board.place(tile("vvvvvv", id: 1), at: east)
+        let village = (0..<10).map { Tile(id: 20 + $0, edges: Array(repeating: .village, count: 6)) }
+        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: village, tilesLeft: 10)
+        let quest = try #require(game.activeQuests.first)
+        #expect(quest.growth == quest.target - 2 + 1)
+        // Grow the village until the quest completes, and check it pays for the growth, not the size.
+        var paid = 0
+        for hex in [Hex(1, -1), Hex(0, -1), Hex(-1, 0), Hex(-1, 1), Hex(0, 1)] where game.activeQuests.contains(where: { $0.id == quest.id }) {
+            let placed = game.placeCurrent(at: hex)
+            if let placed, placed.completedQuests.contains(where: { $0.id == quest.id }) {
+                paid = placed.coins - placed.evaluation.matchingEdges.count * game.rules.coinsPerMatch
+                    - (placed.evaluation.isPerfect ? game.rules.coinsPerPerfect : 0)
+            }
+        }
+        #expect(paid == game.rules.questCoins(for: quest.growth))
+    }
+}

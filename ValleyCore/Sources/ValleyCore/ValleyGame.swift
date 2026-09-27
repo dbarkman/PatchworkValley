@@ -24,6 +24,9 @@ public struct Rules: Sendable {
     public var questCoinsPerTile = 0
     /// Added to every quest target, so later coin valleys ask for more.
     public var questTargetBonus = 0
+    /// Keep at least one quest going: when none is active or on its way, set one on a
+    /// region already built (favoring big ones), or else on the next tile dealt.
+    public var alwaysQuest = false
     /// Coin mode's crater radius. Zero means the open plane.
     public var craterRadius = 0
     /// How far the crater's outline wanders, from 0 (round) to 1 (ragged).
@@ -54,6 +57,8 @@ public struct Rules: Sendable {
         rules.questCoinBase = 5
         rules.questCoinsPerTile = 2
         rules.questTargetBonus = min(6, (max(1, valley) - 1) / 3)
+        rules.questChance = 0.3
+        rules.alwaysQuest = true
         rules.continueTiles = 3
         // A crater about 4 steps from the start to its wall: nearly round in valley 1, fully
         // ragged by valley 10, and centered up to a step away early on (two from valley 3),
@@ -85,23 +90,28 @@ public struct Rules: Sendable {
     public func questBase(afterPlacing placed: Int) -> Int { 4 + questTargetBonus + placed / 10 }
     public func questReward(for target: Int) -> Int { 3 + target / 3 }
     public func questPoints(for target: Int) -> Int { target * 10 }
-    public func questCoins(for target: Int) -> Int { questCoinBase + questCoinsPerTile * target }
+    /// Coins for finishing a quest that asked for `growth` tiles, counting the quest's own tile.
+    public func questCoins(for growth: Int) -> Int { questCoinBase + questCoinsPerTile * growth }
 }
 
 /// A Zen-mode quest carried by a tile. It tracks the region touching the tile it came on.
 public struct Quest: Hashable, Sendable, Identifiable {
     public enum Status: Hashable, Sendable { case active, completed, failed }
 
-    /// The id of the tile that carried the quest.
+    /// The id of the tile that carried the quest; negative for quests set on the board.
     public let id: Int
     public let terrain: Terrain
     public let target: Int
-    /// Where the quest tile was placed; the quest tracks the region touching it.
+    /// A hex in the region the quest tracks: where the quest tile was placed, or a tile of the region it was set on.
     public let anchor: Hex
     public internal(set) var progress = 1
     public internal(set) var status = Status.active
+    /// The region's size when the quest began: 1 for a quest tile, the region's size for a board quest.
+    public internal(set) var start = 1
 
     public var remaining: Int { max(0, target - progress) }
+    /// Tiles the quest asked for, counting its first one; rewards follow this, not the region's full size.
+    public var growth: Int { target - start + 1 }
 }
 
 /// A level objective: grow any one connected region of `terrain` to `target` tiles.
@@ -149,6 +159,8 @@ public struct PlacementResult: Sendable {
     public let failedQuests: [Quest]
     /// Goals this placement finished.
     public let metGoals: [Goal]
+    /// Quests the game set on the board after this placement, to keep one going.
+    public let startedQuests: [Quest]
     /// Unused-tile bonus, paid when this placement won the level.
     public let bonusPoints: Int
     /// Coins earned, in Coin mode.
@@ -172,6 +184,10 @@ public struct ValleyGame: Sendable {
     /// The dealt stack has been used up at least once. Tiles bought after that are a bonus.
     public private(set) var hasFinishedStack = false
     private var queue: [Tile] = []
+    /// Ids for quests set on the board, counting down from -1 so they never meet a tile's id.
+    private var nextBoardQuestID = -1
+    /// No region could take a board quest, so the next tile dealt carries one.
+    private var questOwed = false
     /// The rest of the dealt stack, after the visible tiles. Tiles beyond it (bought or
     /// earned) come straight from the generator.
     private var upcoming: [Tile] = []
@@ -201,6 +217,7 @@ public struct ValleyGame: Sendable {
         self.goals = goals
         refreshGoals()
         refillQueue()
+        keepAQuestGoing()
     }
 
     public init(level: LevelSpec) {
@@ -219,6 +236,7 @@ public struct ValleyGame: Sendable {
         generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance, lakeChance: rules.lakeChance)
         refreshGoals()
         refillQueue()
+        keepAQuestGoing()
     }
 
     public var current: Tile? { queue.first }
@@ -318,7 +336,7 @@ public struct ValleyGame: Sendable {
                 quests[index].status = .completed
                 if rules.questsRewardTiles { awarded += rules.questReward(for: quest.target) }
                 earned += rules.questPoints(for: quest.target)
-                coinsEarned += rules.questCoins(for: quest.target)
+                coinsEarned += rules.questCoins(for: quest.growth)
                 completed.append(quests[index])
             } else if board.openEdgeCount(of: region, terrain: quest.terrain) == 0 {
                 quests[index].status = .failed
@@ -334,6 +352,7 @@ public struct ValleyGame: Sendable {
         score += earned + bonus
         coins += coinsEarned
         refillQueue()
+        let started = keepAQuestGoing()
 
         return PlacementResult(
             hex: hex,
@@ -344,6 +363,7 @@ public struct ValleyGame: Sendable {
             completedQuests: completed,
             failedQuests: failed,
             metGoals: metGoals,
+            startedQuests: started,
             bonusPoints: bonus,
             coins: coinsEarned
         )
@@ -353,12 +373,14 @@ public struct ValleyGame: Sendable {
     public mutating func swapCurrent() {
         guard canUsePowerUps else { return }
         queue[0] = generator.makeTile()
+        keepAQuestGoing()
     }
 
     /// Wildcard power-up: the current tile becomes a wildcard that matches anything. The stack count doesn't change.
     public mutating func makeCurrentWild() {
         guard canUsePowerUps else { return }
         queue[0] = generator.makeWildTile()
+        keepAQuestGoing()
     }
 
     /// Dynamite power-up: blasts a revealed mountain on the crater floor. Returns false when there's no such mountain.
@@ -406,10 +428,61 @@ public struct ValleyGame: Sendable {
             var tile = upcoming.isEmpty ? generator.makeTile() : upcoming.removeFirst()
             let pendingQuests = activeQuests.count + queue.filter { $0.quest != nil }.count
             if rules.questChance > 0 && pendingQuests < rules.maxActiveQuests {
-                tile = generator.assignQuest(to: tile, base: rules.questBase(afterPlacing: tilesPlaced), supply: supply())
+                tile = generator.assignQuest(to: tile, base: rules.questBase(afterPlacing: tilesPlaced), supply: supply(), force: questOwed)
+                if tile.quest != nil { questOwed = false }
             }
             queue.append(tile)
         }
+    }
+
+    /// Keeps at least one quest going (when the rules ask for it): if none is active and
+    /// none is on a visible tile, sets one on a region already built, favoring the biggest.
+    /// If no region can grow, the next tile dealt carries a quest instead.
+    @discardableResult
+    private mutating func keepAQuestGoing() -> [Quest] {
+        guard rules.alwaysQuest, outcome == .playing, activeQuests.isEmpty,
+              !queue.contains(where: { $0.quest != nil }) else { return [] }
+        guard let quest = makeBoardQuest() else {
+            questOwed = true
+            return []
+        }
+        quests.append(quest)
+        return [quest]
+    }
+
+    /// A quest to grow one of the regions on the board by a few tiles, if any can grow and
+    /// the tiles still to come can supply it. Bigger regions are likelier to be chosen.
+    private mutating func makeBoardQuest() -> Quest? {
+        let supply = supply()
+        var options: [(Quest, Int)] = []
+        let hexes = board.tiles.keys.sorted { ($0.r, $0.q) < ($1.r, $1.q) }
+        for terrain in Terrain.questable {
+            var seen: Set<Hex> = []
+            for hex in hexes where !seen.contains(hex) && board[hex]?.contains(terrain) == true {
+                let region = board.region(of: terrain, from: hex)
+                seen.formUnion(region)
+                guard board.openEdgeCount(of: region, terrain: terrain) > 0 else { continue }
+                let share = terrain == .water ? 0.6 : 0.7
+                let room = Int(Double(supply[terrain, default: 0]) * share)
+                let wanted = terrain == .water ? generator.roll(2...3) : generator.roll(3...5) + rules.questTargetBonus / 2
+                let growth = min(wanted, room)
+                guard growth >= 2 else { continue }
+                // Anchor the badge on the region tile that shows the most of the terrain.
+                let tiles = region.filter { board[$0] != nil }.sorted { ($0.r, $0.q) < ($1.r, $1.q) }
+                guard let anchor = tiles.max(by: { sides(of: terrain, at: $0) < sides(of: terrain, at: $1) }) else { continue }
+                let size = region.count
+                var quest = Quest(id: nextBoardQuestID, terrain: terrain, target: size + growth, anchor: anchor, progress: size)
+                quest.start = size
+                options.append((quest, size))
+            }
+        }
+        guard !options.isEmpty else { return nil }
+        nextBoardQuestID -= 1
+        return generator.pick(options)
+    }
+
+    private func sides(of terrain: Terrain, at hex: Hex) -> Int {
+        board[hex]?.edges.filter { $0 == terrain }.count ?? 0
     }
 
     /// Upcoming tiles (visible and still in the stack) that carry each quest terrain.

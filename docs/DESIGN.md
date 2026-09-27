@@ -25,8 +25,9 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 - **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
 - **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Undo, Swap, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
-- **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile of its target (a forest of 8 pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 300. Coin mode shows coins, never points.
+- **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile it asked for (a tile's forest-of-8 quest pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 300. Coin mode shows coins, never points.
 - **Valleys are numbered** and quests grow by one every three valleys, up to six bigger than valley 1's. Progress saves the moment a valley's stack is finished.
+- **Always a quest going:** 30% of tiles carry a quest (up to 3 at once). Whenever none is active and none is on a tile in view, the game sets one on a region already on the board, favoring the biggest, such as "grow this village from 14 to 18" (3–5 more tiles, 2–3 for rivers). Building big regions pays off. If no region can grow, the next tile dealt carries a quest. Quest rewards follow the growth asked for, counting the quest's first tile, not the region's full size.
 - **Quests always fit the stack:** the whole stack is dealt when the valley starts, and a quest never asks for more than its own tile plus 70% of the matching tiles still to come (60% for rivers, which are harder to join). A river quest of 4 can't appear when only two river tiles remain. A terrain showing on just one side of the quest tile asks for 2 less, since it can only grow one way, and quests favor terrains that cover more of the tile.
 - **Power-ups** are introduced one per valley on the valley's opening card, and bought with coins from the bar under the tile tray:
 
@@ -43,11 +44,11 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 | Valley | Coins per valley (+20 bonus) | Quests | Out of room |
 |---|---|---|---|
-| 1 | 115 | 3.4 | 11% |
-| 5 | 111 | 3.0 | 14% |
-| 10 | 99 | 2.2 | 22% |
+| 1 | 130 | 4.7 | 18% |
+| 5 | 123 | 4.1 | 20% |
+| 10 | 108 | 3.0 | 24% |
 
-  A purely greedy bot gets stuck about twice as often, so planning ahead pays.
+  With a quest always going, the bot chases quests harder and gets stuck a little more often; a purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
 ## Levels (main mode)

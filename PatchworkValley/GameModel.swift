@@ -529,7 +529,7 @@ final class GameModel {
         } else if let quest = result.completedQuests.first {
             let reward = game.rules.questsRewardTiles
                 ? "+\(game.rules.questReward(for: quest.target)) tiles"
-                : "+\(game.rules.questCoins(for: quest.target)) coins"
+                : "+\(game.rules.questCoins(for: quest.growth)) coins"
             show("\(quest.terrain.displayName) complete! \(reward)", symbol: quest.terrain.symbolName)
         } else if result.evaluation.isPerfect {
             let reward = if game.rules.perfectBonusTiles > 0 {
@@ -542,6 +542,8 @@ final class GameModel {
             show("Perfect fit! \(reward)", symbol: "sparkles")
         } else if let quest = result.failedQuests.first {
             show("\(quest.terrain.displayName) quest closed off", symbol: "xmark.circle")
+        } else if let quest = result.startedQuests.first {
+            show("New quest: \(quest.terrain.displayName) to \(quest.target)", symbol: quest.terrain.symbolName)
         }
     }
 
