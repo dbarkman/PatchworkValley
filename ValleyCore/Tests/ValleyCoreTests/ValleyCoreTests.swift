@@ -243,31 +243,56 @@ private let east = Hex(1, 0)
 
 @Suite struct GeneratorTests {
     @Test func sameSeedMakesTheSameTiles() {
-        var first = TileGenerator(seed: 7, riverChance: 0.15, questChance: 0.22)
-        var second = TileGenerator(seed: 7, riverChance: 0.15, questChance: 0.22)
+        var first = TileGenerator(seed: 7, riverChance: 0.15, questChance: 0.22, lakeChance: 0.35)
+        var second = TileGenerator(seed: 7, riverChance: 0.15, questChance: 0.22, lakeChance: 0.35)
         for _ in 0..<50 {
-            #expect(first.makeTile(allowQuest: true, questBase: 5) == second.makeTile(allowQuest: true, questBase: 5))
+            #expect(first.makeTile() == second.makeTile())
         }
     }
 
-    @Test func riversCrossExactlyTwoEdges() {
-        var generator = TileGenerator(seed: 11, riverChance: 0.5, questChance: 0)
-        var sawRiver = false
-        for _ in 0..<200 {
-            let waterEdges = generator.makeTile(allowQuest: false, questBase: 5).edges.filter { $0 == .water }.count
-            #expect(waterEdges == 0 || waterEdges == 2)
-            sawRiver = sawRiver || waterEdges == 2
+    @Test func riversCrossTwoEdgesAndLakesTakeOne() {
+        var generator = TileGenerator(seed: 11, riverChance: 0.5, questChance: 0, lakeChance: 0.4)
+        var counts: Set<Int> = []
+        for _ in 0..<300 {
+            let waterEdges = generator.makeTile().edges.filter { $0 == .water }.count
+            #expect([0, 1, 2].contains(waterEdges))
+            counts.insert(waterEdges)
         }
-        #expect(sawRiver)
+        #expect(counts == [0, 1, 2])
+    }
+
+    @Test func withoutLakesEveryRiverCrossesTwoEdges() {
+        var generator = TileGenerator(seed: 11, riverChance: 0.5, questChance: 0)
+        for _ in 0..<200 {
+            let waterEdges = generator.makeTile().edges.filter { $0 == .water }.count
+            #expect(waterEdges == 0 || waterEdges == 2)
+        }
     }
 
     @Test func questsOnlyAskForTerrainOnTheTile() {
         var generator = TileGenerator(seed: 3, riverChance: 0.15, questChance: 1)
+        let plenty = Dictionary(uniqueKeysWithValues: Terrain.questable.map { ($0, 30) })
         for _ in 0..<200 {
-            let made = generator.makeTile(allowQuest: true, questBase: 5)
+            let made = generator.assignQuest(to: generator.makeTile(), base: 5, supply: plenty)
             if let quest = made.quest {
                 #expect(made.contains(quest.terrain))
                 #expect(quest.target >= 3)
+            }
+        }
+    }
+
+    /// A quest never asks for more than the quest tile plus 70% (60% for rivers) of the matching tiles to come.
+    @Test func questsFitTheTilesStillToCome() {
+        var generator = TileGenerator(seed: 8, riverChance: 0.15, questChance: 1)
+        let river = Tile(id: 50, edges: [.water, .meadow, .meadow, .water, .meadow, .meadow])
+        let scarce: [Terrain: Int] = [.water: 2, .meadow: 30]
+        for _ in 0..<100 {
+            #expect(generator.assignQuest(to: river, base: 8, supply: scarce).quest == nil, "1 + 60% of 2 rivers is too few for a quest")
+        }
+        let enough: [Terrain: Int] = [.water: 10]
+        for _ in 0..<100 {
+            if let quest = generator.assignQuest(to: river, base: 8, supply: enough).quest {
+                #expect(quest.target <= 1 + 6)
             }
         }
     }
@@ -277,6 +302,25 @@ private let east = Hex(1, 0)
         let starter = generator.makeStarterTile()
         #expect(!starter.contains(.water))
         #expect(starter.quest == nil)
+    }
+}
+
+@Suite struct CoinsPerMatchTests {
+    @Test func coinModePaysOneCoinPerMatchedSide() throws {
+        var board = Board(starter: tile("ffffff", id: 0))
+        board.place(tile("cccccc", id: 1), at: Hex(1, -1))
+        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("mmcfmm")], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.evaluation.matchingEdges.count == 2)
+        #expect(result.coins == 2)
+    }
+
+    @Test func zenAndLevelsPayNoCoins() throws {
+        var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [tile("mmmfmm")], tilesLeft: 3)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.coins == 0)
     }
 }
 
@@ -385,7 +429,7 @@ private let east = Hex(1, 0)
         let result = try #require(placed)
         #expect(result.completedQuests.count == 1)
         #expect(result.tilesAwarded == 0)
-        #expect(result.coins == game.rules.questCoins(for: 2))
+        #expect(result.coins == game.rules.questCoins(for: 2) + result.evaluation.matchingEdges.count * game.rules.coinsPerMatch)
         #expect(game.coins == result.coins)
         #expect(game.tilesLeft == 4)
     }
@@ -611,6 +655,6 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         let placed = game.placeCurrent(at: east)
         let result = try #require(placed)
         #expect(result.evaluation.isPerfect)
-        #expect(result.coins == game.rules.coinsPerPerfect)
+        #expect(result.coins == game.rules.coinsPerPerfect + result.evaluation.matchingEdges.count * game.rules.coinsPerMatch)
     }
 }

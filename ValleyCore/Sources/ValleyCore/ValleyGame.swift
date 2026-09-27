@@ -7,6 +7,8 @@ public struct Rules: Sendable {
     public var perfectPoints = 50
     public var perfectBonusTiles = 1
     public var riverChance = 0.15
+    /// Share of water tiles that are lakes: a pond with one river edge, where a river can end.
+    public var lakeChance = 0.35
     public var questChance = 0.22
     public var maxActiveQuests = 3
     public var continueTiles = 5
@@ -17,6 +19,7 @@ public struct Rules: Sendable {
     /// Quests add tiles to the stack (Zen). When false, quests pay only points and coins, so the stack only counts down.
     public var questsRewardTiles = true
     public var coinsPerPerfect = 0
+    public var coinsPerMatch = 0
     public var questCoinBase = 0
     public var questCoinsPerTile = 0
     /// Added to every quest target, so later coin valleys ask for more.
@@ -41,6 +44,7 @@ public struct Rules: Sendable {
         rules.perfectBonusTiles = 0
         rules.questsRewardTiles = false
         rules.coinsPerPerfect = 5
+        rules.coinsPerMatch = 1
         rules.questCoinBase = 5
         rules.questCoinsPerTile = 2
         rules.questTargetBonus = min(6, (max(1, valley) - 1) / 3)
@@ -60,6 +64,8 @@ public struct Rules: Sendable {
         rules.questChance = 0
         rules.perfectBonusTiles = 0
         rules.continueTiles = 3
+        // The designed levels' seeds deal rivers only.
+        rules.lakeChance = 0
         return rules
     }
 
@@ -154,10 +160,13 @@ public struct ValleyGame: Sendable {
     /// The dealt stack has been used up at least once. Tiles bought after that are a bonus.
     public private(set) var hasFinishedStack = false
     private var queue: [Tile] = []
+    /// The rest of the dealt stack, after the visible tiles. Tiles beyond it (bought or
+    /// earned) come straight from the generator.
+    private var upcoming: [Tile] = []
     private var generator: TileGenerator
 
     public init(seed: UInt64, rules: Rules = Rules(), goals: [Goal] = []) {
-        var generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance)
+        var generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance, lakeChance: rules.lakeChance)
         self.rules = rules
         if rules.craterRadius > 0 {
             let crater = Crater.generate(
@@ -170,6 +179,8 @@ public struct ValleyGame: Sendable {
         } else {
             board = Board(starter: generator.makeStarterTile())
         }
+        // Deal the whole stack up front, so quests can be sized to the tiles still to come.
+        upcoming = (0..<rules.startingTiles).map { _ in generator.makeTile() }
         self.generator = generator
         tilesLeft = rules.startingTiles
         self.goals = goals
@@ -190,7 +201,7 @@ public struct ValleyGame: Sendable {
         self.queue = queue
         self.tilesLeft = tilesLeft
         self.goals = goals
-        generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance)
+        generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance, lakeChance: rules.lakeChance)
         refreshGoals()
         refillQueue()
     }
@@ -243,6 +254,11 @@ public struct ValleyGame: Sendable {
         evaluation.matchingEdges.count * rules.matchPoints + (evaluation.isPerfect ? rules.perfectPoints : 0)
     }
 
+    /// Coins for edge matches and a perfect fit (Coin mode). Quest coins are added on completion.
+    public func coins(for evaluation: PlacementEvaluation) -> Int {
+        evaluation.matchingEdges.count * rules.coinsPerMatch + (evaluation.isPerfect ? rules.coinsPerPerfect : 0)
+    }
+
     public mutating func rotateCurrent(clockwiseSteps steps: Int = 1) {
         guard !queue.isEmpty else { return }
         queue[0].rotateClockwise(steps)
@@ -269,7 +285,7 @@ public struct ValleyGame: Sendable {
         )
         var earned = points(for: evaluation)
         var awarded = evaluation.isPerfect ? rules.perfectBonusTiles : 0
-        var coinsEarned = evaluation.isPerfect ? rules.coinsPerPerfect : 0
+        var coinsEarned = coins(for: evaluation)
 
         if let spec = tile.quest {
             quests.append(Quest(id: tile.id, terrain: spec.terrain, target: spec.target, anchor: hex))
@@ -319,7 +335,7 @@ public struct ValleyGame: Sendable {
     /// Swap power-up: trades the current tile for a freshly dealt one. The stack count doesn't change.
     public mutating func swapCurrent() {
         guard canUsePowerUps else { return }
-        queue[0] = generator.makeTile(allowQuest: false, questBase: 0)
+        queue[0] = generator.makeTile()
     }
 
     /// Wildcard power-up: the current tile becomes a wildcard that matches anything. The stack count doesn't change.
@@ -370,11 +386,20 @@ public struct ValleyGame: Sendable {
 
     private mutating func refillQueue() {
         while queue.count < min(tilesLeft, rules.visibleTiles) {
+            var tile = upcoming.isEmpty ? generator.makeTile() : upcoming.removeFirst()
             let pendingQuests = activeQuests.count + queue.filter { $0.quest != nil }.count
-            queue.append(generator.makeTile(
-                allowQuest: pendingQuests < rules.maxActiveQuests,
-                questBase: rules.questBase(afterPlacing: tilesPlaced)
-            ))
+            if rules.questChance > 0 && pendingQuests < rules.maxActiveQuests {
+                tile = generator.assignQuest(to: tile, base: rules.questBase(afterPlacing: tilesPlaced), supply: supply())
+            }
+            queue.append(tile)
         }
+    }
+
+    /// Upcoming tiles (visible and still in the stack) that carry each quest terrain.
+    private func supply() -> [Terrain: Int] {
+        let ahead = queue + upcoming
+        return Dictionary(uniqueKeysWithValues: Terrain.questable.map { terrain in
+            (terrain, ahead.filter { $0.contains(terrain) }.count)
+        })
     }
 }

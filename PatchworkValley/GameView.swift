@@ -398,11 +398,17 @@ private struct TileTray: View {
         if model.game.isStuck {
             Text("This tile fits nowhere")
                 .foregroundStyle(.orange)
-        } else if let points = model.projectedPoints {
-            Text("+\(points)")
-                .font(.headline)
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(points)))
+        } else if let reward = model.projectedReward {
+            Label {
+                Text("+\(reward)")
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(reward)))
+            } icon: {
+                if model.mode == .coins {
+                    Image(systemName: "centsign.circle.fill").foregroundStyle(.yellow)
+                }
+            }
+            .font(.headline)
         } else if let evaluation = model.ghostEvaluation {
             Text(evaluation.matchingEdges.isEmpty && model.game.board.requiresMatch ? "Match at least one side" : "Rivers must connect")
                 .foregroundStyle(.red)

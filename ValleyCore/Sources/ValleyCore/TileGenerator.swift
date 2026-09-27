@@ -13,23 +13,26 @@ public struct SplitMix64: RandomNumberGenerator, Sendable {
     }
 }
 
-/// Deterministic tile factory. Land edges come in 1–3 contiguous bands;
-/// rivers cross a tile on exactly two edges.
+/// Deterministic tile factory. Land edges come in 1–3 contiguous bands; a river
+/// crosses a tile on two edges, or ends in a lake on one.
 public struct TileGenerator: Sendable {
     private var rng: SplitMix64
     private var nextID = 1
     private let riverChance: Double
     private let questChance: Double
+    /// Share of water tiles that are lakes (one river edge into a pond) rather than rivers.
+    private let lakeChance: Double
 
     private static let landWeights: [(Terrain, Int)] = [(.meadow, 3), (.forest, 3), (.field, 2), (.village, 1)]
     private static let bandWeights: [(Int, Int)] = [(1, 2), (2, 5), (3, 3)]
     /// Clockwise distance from a river's first edge to its second: straight runs are twice as common as bends.
     private static let riverTurnWeights: [(Int, Int)] = [(3, 2), (2, 1), (4, 1)]
 
-    public init(seed: UInt64, riverChance: Double, questChance: Double) {
+    public init(seed: UInt64, riverChance: Double, questChance: Double, lakeChance: Double = 0) {
         rng = SplitMix64(seed: seed)
         self.riverChance = riverChance
         self.questChance = questChance
+        self.lakeChance = lakeChance
     }
 
     /// The first tile of every valley: land only, no river, no quest.
@@ -37,14 +40,39 @@ public struct TileGenerator: Sendable {
         Tile(id: 0, edges: makeLandEdges())
     }
 
-    public mutating func makeTile(allowQuest: Bool, questBase: Int) -> Tile {
+    /// A tile with no quest; `assignQuest` adds one once the tile is dealt.
+    public mutating func makeTile() -> Tile {
         var edges = makeLandEdges()
-        if chance(riverChance) { addRiver(to: &edges) }
-        // Always roll, so the tile stream never depends on what the player did.
-        let rolledQuest = chance(questChance)
-        let quest = allowQuest && rolledQuest ? makeQuest(for: edges, base: questBase) : nil
+        if chance(riverChance) {
+            if lakeChance > 0 && chance(lakeChance) {
+                edges[Int.random(in: 0..<6, using: &rng)] = .water
+            } else {
+                addRiver(to: &edges)
+            }
+        }
+        // One more draw per tile: the designed levels' seeds depend on this exact stream.
+        _ = chance(questChance)
         defer { nextID += 1 }
-        return Tile(id: nextID, edges: edges, quest: quest)
+        return Tile(id: nextID, edges: edges)
+    }
+
+    /// Maybe gives `tile` a quest, sized so the tiles still to come can finish it.
+    /// `supply` counts the upcoming tiles that carry each terrain.
+    public mutating func assignQuest(to tile: Tile, base: Int, supply: [Terrain: Int]) -> Tile {
+        guard chance(questChance) else { return tile }
+        var options: [QuestSpec] = []
+        for terrain in Terrain.questable where tile.contains(terrain) {
+            let wanted = terrain == .water
+                ? max(3, base / 2 + Int.random(in: 0...2, using: &rng))
+                : base + Int.random(in: 0...4, using: &rng)
+            // The quest tile itself, plus most of the matching tiles still to come.
+            let share = terrain == .water ? 0.6 : 0.7
+            let reachable = 1 + Int(Double(supply[terrain, default: 0]) * share)
+            let target = min(wanted, reachable)
+            if target >= 3 { options.append(QuestSpec(terrain: terrain, target: target)) }
+        }
+        guard let quest = options.randomElement(using: &rng) else { return tile }
+        return Tile(id: tile.id, edges: tile.edges, quest: quest)
     }
 
     /// A crater's first tile: all four land terrains in bands, so the first tile
@@ -95,15 +123,6 @@ public struct TileGenerator: Sendable {
         let turn = pick(Self.riverTurnWeights)
         edges[start] = .water
         edges[(start + turn) % 6] = .water
-    }
-
-    private mutating func makeQuest(for edges: [Terrain], base: Int) -> QuestSpec? {
-        let options = Terrain.questable.filter { edges.contains($0) }
-        guard let terrain = options.randomElement(using: &rng) else { return nil }
-        let target = terrain == .water
-            ? max(3, base / 2 + Int.random(in: 0...2, using: &rng))
-            : base + Int.random(in: 0...4, using: &rng)
-        return QuestSpec(terrain: terrain, target: target)
     }
 
     private mutating func chance(_ probability: Double) -> Bool {

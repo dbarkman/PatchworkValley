@@ -156,8 +156,10 @@ final class GameModel {
 
     var canPlace: Bool { ghostEvaluation?.isLegal == true }
 
-    var projectedPoints: Int? {
-        ghostEvaluation.flatMap { $0.isLegal ? game.points(for: $0) : nil }
+    /// What placing the ghost would earn now: coins in Coin mode, points elsewhere.
+    var projectedReward: Int? {
+        guard let evaluation = ghostEvaluation, evaluation.isLegal else { return nil }
+        return mode == .coins ? game.coins(for: evaluation) : game.points(for: evaluation)
     }
 
     // MARK: - Playing

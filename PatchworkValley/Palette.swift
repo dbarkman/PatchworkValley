@@ -19,6 +19,7 @@ enum Palette {
     static let snow = UIColor(red: 0.96, green: 0.97, blue: 0.98, alpha: 1)
     static let dust = UIColor(red: 0.78, green: 0.72, blue: 0.62, alpha: 0.8)
     static let blast = UIColor(red: 1.0, green: 0.82, blue: 0.45, alpha: 0.9)
+    static let coin = UIColor(red: 1.0, green: 0.84, blue: 0.2, alpha: 1)
 }
 
 extension Terrain {

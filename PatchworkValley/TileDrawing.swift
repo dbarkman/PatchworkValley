@@ -41,9 +41,10 @@ struct TileDrawing {
             }
             let width = r * 0.3
             layers.append(Layer(path: river, stroke: Terrain.water.uiColor, lineWidth: width))
-            // Round the bend where the two strips meet in the middle.
-            let joint = CGPath(ellipseIn: CGRect(x: -width / 2, y: -width / 2, width: width, height: width), transform: nil)
-            layers.append(Layer(path: joint, fill: Terrain.water.uiColor))
+            // Two strips meet in a rounded bend; a lone strip ends in a lake.
+            let pond = riverEdges.count == 1 ? r * 0.62 : width
+            let joint = CGPath(ellipseIn: CGRect(x: -pond / 2, y: -pond / 2, width: pond, height: pond), transform: nil)
+            layers.append(Layer(path: joint, fill: Terrain.water.uiColor, stroke: riverEdges.count == 1 ? Terrain.water.detailColor : nil, lineWidth: 1.5))
         }
 
         if edges.contains(.wild) {

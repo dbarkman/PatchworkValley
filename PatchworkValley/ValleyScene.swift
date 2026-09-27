@@ -264,14 +264,29 @@ final class ValleyScene: SKScene {
                 badge.update(remaining: quest.remaining)
             } else {
                 let badge = QuestBadge(quest: quest, radius: geometry.radius * 0.3)
-                // Sit near the tile's top corner so the art stays visible.
-                let center = geometry.center(of: quest.anchor)
-                badge.position = CGPoint(x: center.x, y: center.y + geometry.radius * 0.62)
+                badge.position = badgePosition(for: quest, on: game.board)
                 badgeLayer.addChild(badge)
                 badges[quest.id] = badge
                 badge.appear()
             }
         }
+    }
+
+    /// Where a quest's badge sits: on the part of its tile showing the quest's terrain.
+    private func badgePosition(for quest: Quest, on board: Board) -> CGPoint {
+        let center = geometry.center(of: quest.anchor)
+        let directions = board[quest.anchor].map { tile in (0..<6).filter { tile.edge($0) == quest.terrain } } ?? []
+        var pull = directions.reduce(CGVector.zero) { sum, direction in
+            let out = geometry.outward(direction)
+            return CGVector(dx: sum.dx + out.dx, dy: sum.dy + out.dy)
+        }
+        // Opposite wedges (a straight river, say) cancel out; lean toward the first one instead.
+        if hypot(pull.dx, pull.dy) < 0.3, let first = directions.first {
+            pull = geometry.outward(first)
+        }
+        let length = max(hypot(pull.dx, pull.dy), 0.001)
+        let reach = directions.isEmpty ? 0 : geometry.radius * 0.5
+        return CGPoint(x: center.x + pull.dx / length * reach, y: center.y + pull.dy / length * reach)
     }
 
     private func syncGhost(_ model: GameModel, in view: SKView) {
@@ -306,8 +321,11 @@ final class ValleyScene: SKScene {
 
     private func playEffects(for placement: PlacementResult, board: Board, in view: SKView) {
         let center = geometry.center(of: placement.hex)
-        if placement.points > 0 {
-            floatText("+\(placement.points)", at: CGPoint(x: center.x, y: center.y + geometry.radius * 0.4))
+        let above = CGPoint(x: center.x, y: center.y + geometry.radius * 0.4)
+        if model?.mode == .coins {
+            if placement.coins > 0 { floatText("+\(placement.coins)", at: above, color: Palette.coin) }
+        } else if placement.points > 0 {
+            floatText("+\(placement.points)", at: above, color: .white)
         }
         for quest in placement.completedQuests {
             flash(board.region(of: quest.terrain, from: quest.anchor), from: quest.anchor, in: view)
@@ -330,11 +348,11 @@ final class ValleyScene: SKScene {
         }
     }
 
-    private func floatText(_ text: String, at point: CGPoint) {
+    private func floatText(_ text: String, at point: CGPoint, color: UIColor) {
         let label = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         label.text = text
         label.fontSize = geometry.radius * 0.5
-        label.fontColor = .white
+        label.fontColor = color
         label.position = point
         label.setScale(0.6)
         effectLayer.addChild(label)
