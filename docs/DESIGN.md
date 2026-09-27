@@ -24,7 +24,7 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 - **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground, a mountain rising out of the fog, or a lake. The rim appears as you reach the edge. A Lantern lights the whole crater for one turn: when the next tile goes down, everything not touching a tile sinks back into the fog.
 - **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
-- **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Undo, Swap, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
+- **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Swap, Undo, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
 - **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile it asked for (a tile's forest-of-8 quest pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 500. Coin mode shows coins, never points.
 - **Valleys are numbered** and quests grow by one every three valleys, up to six bigger than valley 1's. Progress saves the moment a valley's stack is finished.
 - **Always a quest going:** 30% of tiles carry a quest (up to 3 at once). Whenever none is active and none is on a tile in view, the game sets one. Half the time it grows a region already on the board, favoring the biggest, such as "grow this village from 14 to 18" (3–5 more tiles, 2–3 for rivers), so building big regions pays off. The other half, it puts a fresh quest on the next tile. If one kind isn't possible, the other is used.
@@ -34,13 +34,15 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 | Power-up | Introduced | Price | Effect |
 |---|---|---|---|
-| Undo | Valley 1 | 50 | Take back the last placement and the coins it earned |
-| Swap | Valley 2 | 100 | Trade the tile in hand for a freshly dealt one |
-| Wildcard | Valley 3 | 150 | The tile in hand becomes a patchwork that matches, and joins, any terrain |
+| Swap | Valley 1 | 25 | Trade the tile in hand for a freshly dealt one |
+| Undo | Valley 2 | 50 | Take back the last placement and the coins it earned |
+| Wildcard | Valley 3 | 100 | The tile in hand becomes a patchwork that matches, and joins, any terrain |
 | Dynamite | Valley 4 | 200 | Blast a revealed mountain on the valley floor (not the rim), opening the ground |
 | Lantern | Valley 5 | 300 | Light every mountain and lake in the valley until the next tile is placed; the preview counts lit lakes, and Dynamite can reach any lit floor mountain |
 
-- **End of a valley:** when the stack runs out, the card shows the coins earned. If a quest is within three tiles, it offers **+3 tiles for 250 coins** as well as the next valley. Bought tiles are a bonus: if one fits nowhere, the valley still counts as finished.
+- **End of a valley:** when the stack runs out, the card shows the coins earned. If a quest is within three tiles, it offers **+3 tiles for 250 coins** as well as the next valley. Bought tiles are a bonus: if one fits nowhere, the out-of-room card offers the rescues and **Finish valley**, which ends the valley as done, so buying tiles never turns a finished valley into a loss.
+- **View valley:** the end card's **View valley** puts the card away and lifts the fog off the whole crater: every mountain and lake rises into view, found or not, and the camera frames it all. The finished valley can be panned and zoomed but not played. **Save to Gallery** keeps it (see *Gallery*), and **Done** brings the card back with the valley still in full view. Looking never changes the run, so buying +3 tiles afterwards puts the fog back.
+- **Dynamite with nothing to blast:** when every mountain found so far is on the valley's edge, the Dynamite button looks off but still answers a tap, with a message that only mountains inside the valley can be blasted.
 - **Economy and difficulty:** the disabled `coinEconomyReport` test plays 300 valleys with a bot that chases quests while keeping room open (a stand-in for a planning player):
 
 | Valley | Coins per valley (+20 bonus) | Quests | Out of room |
@@ -74,7 +76,11 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 ## Zen mode
 
-One valley for a high score on the open plane (no crater, no match rule), starting with 30 tiles. Some tiles carry a quest, for example "grow this forest to 8", which asks the region the tile joins to grow by that many tiles (see *Quest tiles ask for growth* above). Completing a quest earns `3 + growth / 3` tiles and `target × 10` points. A quest fails if its region closes off first. Perfect fits earn one extra tile. The run ends when tiles run out, and the card offers **+5 tiles** and shows the best score.
+One valley for a high score on the open plane (no crater, no match rule), starting with 30 tiles. Peaks and lakes hide in the fog, as in Coin mode: about 6% of hexes within 20 steps of the start hold a peak (single peaks and short ridges) and about 2% a lake, set apart from each other. The start and its neighbors are always clear, and the start is never walled in. A tile touching one brings it into view; tiles can't go on either, and a river flowing into a lake counts as a match. Zen has no power-ups. Some tiles carry a quest, for example "grow this forest to 8", which asks the region the tile joins to grow by that many tiles (see *Quest tiles ask for growth* above). Completing a quest earns `3 + growth / 3` tiles and `target × 10` points. A quest fails if its region closes off first. Perfect fits earn one extra tile. The run ends when tiles run out, and the card offers **+5 tiles** and shows the best score.
+
+## Gallery
+
+Finished Coin valleys can be saved from the *View valley* screen. The menu's **Gallery** shows them newest first, with the valley number and date; tap one to see it full screen (pinch or double-tap to zoom), and press and hold, or use the trash button, to delete one after a confirmation. Each saved valley keeps its picture and its layout (every tile, mountain and lake), so it can be drawn again at any size, for sharing later. Reset Player leaves the gallery alone.
 
 ## Monetization
 

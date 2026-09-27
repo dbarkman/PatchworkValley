@@ -40,6 +40,13 @@ public struct Rules: Sendable {
     public var peakCount = 0
     /// Lakes hidden on the crater floor.
     public var lakeCount = 0
+    /// Zen's hidden peaks and lakes on the open plane, scattered out to this many steps
+    /// from the start (the plane is clear beyond). Zero means none.
+    public var scatterRadius = 0
+    /// Share of the scattered area holding a peak (single peaks and short ridges).
+    public var scatterPeakShare = 0.0
+    /// Share of the scattered area holding a lake.
+    public var scatterLakeShare = 0.0
     /// Every placement must match at least one neighboring edge.
     public var requiresMatch = false
     /// A tile that fits nowhere can be thrown away for a tile (Levels, Zen). Without
@@ -75,6 +82,15 @@ public struct Rules: Sendable {
         rules.lakeCount = valley >= 6 ? 3 : 2
         rules.requiresMatch = true
         rules.allowsDiscard = false
+        return rules
+    }
+
+    /// Zen: the open plane, with peaks and lakes hidden in the fog.
+    public static var zen: Rules {
+        var rules = Rules()
+        rules.scatterRadius = 20
+        rules.scatterPeakShare = 0.06
+        rules.scatterLakeShare = 0.02
         return rules
     }
 
@@ -210,6 +226,14 @@ public struct ValleyGame: Sendable {
                 room: rules.startingTiles + 1
             )
             board = Board(starter: generator.makeCraterStarterTile(), crater: crater, requiresMatch: rules.requiresMatch)
+        } else if rules.scatterRadius > 0 {
+            let scatter = Scatter.generate(
+                seed: seed ^ 0x5CA7_7E50,
+                radius: rules.scatterRadius,
+                peakShare: rules.scatterPeakShare,
+                lakeShare: rules.scatterLakeShare
+            )
+            board = Board(starter: generator.makeStarterTile(), scatter: scatter)
         } else {
             board = Board(starter: generator.makeStarterTile())
         }
@@ -230,11 +254,12 @@ public struct ValleyGame: Sendable {
     }
 
     /// Starts from a prepared board and tile queue. Tests use this to set up exact situations.
-    init(rules: Rules = Rules(), board: Board, queue: [Tile], tilesLeft: Int, goals: [Goal] = [], seed: UInt64 = 1) {
+    init(rules: Rules = Rules(), board: Board, queue: [Tile], tilesLeft: Int, goals: [Goal] = [], seed: UInt64 = 1, hasFinishedStack: Bool = false) {
         self.rules = rules
         self.board = board
         self.queue = queue
         self.tilesLeft = tilesLeft
+        self.hasFinishedStack = hasFinishedStack
         self.goals = goals
         generator = TileGenerator(seed: seed, riverChance: rules.riverChance, questChance: rules.questChance, lakeChance: rules.lakeChance)
         refreshGoals()
@@ -249,10 +274,9 @@ public struct ValleyGame: Sendable {
     public var outcome: Outcome {
         if !goals.isEmpty && goals.allSatisfy(\.isMet) { return .won }
         if tilesLeft == 0 { return .outOfTiles }
-        if !rules.allowsDiscard && isStuck {
-            // A bought tile that fits nowhere can't undo a finished stack: the valley still counts as done.
-            return hasFinishedStack ? .outOfTiles : .outOfRoom
-        }
+        // Out of room even with bought tiles in hand: power-ups can still rescue it, and a valley
+        // whose stack was finished can be ended as done (`finishValley`), so it's never a loss.
+        if !rules.allowsDiscard && isStuck { return .outOfRoom }
         return .playing
     }
 
@@ -404,6 +428,14 @@ public struct ValleyGame: Sendable {
     public mutating func lightCrater() {
         guard canUsePowerUps else { return }
         board.light()
+    }
+
+    /// Ends a valley that ran out of room on its bought tiles. Its stack was already
+    /// finished, so it counts as done, and the leftover tiles are dropped.
+    public mutating func finishValley() {
+        guard hasFinishedStack, outcome == .outOfRoom else { return }
+        queue.removeAll()
+        tilesLeft = 0
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.

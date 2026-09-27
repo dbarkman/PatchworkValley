@@ -4,7 +4,7 @@ import ValleyCore
 
 /// The drawing of one tile as plain paths, so SpriteKit (the board) and
 /// SwiftUI Canvas (the tray preview) render identical tiles.
-struct TileDrawing {
+nonisolated struct TileDrawing {
     struct Layer {
         let path: CGPath
         var fill: UIColor?

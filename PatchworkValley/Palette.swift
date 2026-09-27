@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import ValleyCore
 
-enum Palette {
+nonisolated enum Palette {
     static let board = UIColor(red: 0.18, green: 0.24, blue: 0.21, alpha: 1)
     static let rim = UIColor.black.withAlphaComponent(0.18)
     static let slot = UIColor.white
@@ -22,7 +22,7 @@ enum Palette {
     static let coin = UIColor(red: 1.0, green: 0.84, blue: 0.2, alpha: 1)
 }
 
-extension Terrain {
+nonisolated extension Terrain {
     /// The terrain's own color. Water is the river color.
     var uiColor: UIColor {
         switch self {

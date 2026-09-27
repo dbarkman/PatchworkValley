@@ -13,17 +13,17 @@ public struct PlacementEvaluation: Hashable, Sendable {
     public var isPerfect: Bool { isLegal && isEnclosed && clashingEdges.isEmpty && matchingEdges.count >= 2 }
 }
 
-/// The placed tiles of a valley. On the open plane tiles can spread forever; in a
-/// crater (Coin mode) they stay on the floor and mountains block the way.
+/// The placed tiles of a valley. On the open plane tiles can spread forever, around Zen's
+/// hidden peaks and lakes; in a crater (Coin mode) they stay on the floor and mountains block the way.
 public struct Board: Sendable {
     public private(set) var tiles: [Hex: Tile] = [:]
     /// Empty floor touching the valley: the only places a tile can go.
     public private(set) var openSlots: Set<Hex> = []
-    /// Every mountain, seen or not. Empty on the open plane.
+    /// Every mountain, seen or not: a crater's rim and floor peaks, or Zen's scattered peaks. Empty in Levels.
     public private(set) var mountains: Set<Hex> = []
-    /// Lakes on the crater floor, seen or not. A river edge touching one counts as a match.
+    /// Lakes on a crater floor or Zen's plane, seen or not. A river edge touching one counts as a match.
     public private(set) var lakes: Set<Hex> = []
-    /// A Lantern lights the whole crater until the next tile is placed.
+    /// A Lantern lights every mountain and lake until the next tile is placed.
     public private(set) var isLit = false
     /// Mountains and lakes that have touched a tile. They stay in view for good.
     private var seenMountains: Set<Hex> = []
@@ -41,6 +41,15 @@ public struct Board: Sendable {
     /// The open plane: no mountains, no edge, any placement that respects rivers.
     public init(starter: Tile) {
         floor = nil
+        requiresMatch = false
+        place(starter, at: .origin)
+    }
+
+    /// The open plane with hidden peaks and lakes (Zen): no rim and no match rule.
+    public init(starter: Tile, scatter: Scatter) {
+        floor = nil
+        mountains = scatter.peaks
+        lakes = scatter.lakes
         requiresMatch = false
         place(starter, at: .origin)
     }
@@ -225,5 +234,12 @@ public struct Board: Sendable {
     /// Lantern: lights every mountain and lake in the crater until the next tile is placed.
     mutating func light() {
         isLit = true
+    }
+
+    /// A copy with every mountain and lake in view, for looking over a finished valley.
+    public func lit() -> Board {
+        var copy = self
+        copy.light()
+        return copy
     }
 }

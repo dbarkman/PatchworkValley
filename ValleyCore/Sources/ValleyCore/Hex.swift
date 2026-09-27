@@ -3,7 +3,7 @@
 /// Direction `i` points `60° × i` counter-clockwise from east, so directions
 /// `i` and `i + 3` are opposites. A tile's edge `i` faces its neighbor in
 /// direction `i`.
-public struct Hex: Hashable, Sendable, CustomStringConvertible {
+public struct Hex: Hashable, Sendable, Codable, CustomStringConvertible {
     public let q: Int
     public let r: Int
 

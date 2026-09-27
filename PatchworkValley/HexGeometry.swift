@@ -5,7 +5,7 @@ import ValleyCore
 ///
 /// Corner `k` sits at `30° + 60° × k`, so edge `i` runs from corner `i - 1` to corner `i`
 /// and its midpoint lies in direction `i`, matching `Hex.neighbor(i)`.
-struct HexGeometry {
+nonisolated struct HexGeometry {
     /// Center to corner.
     let radius: CGFloat
 

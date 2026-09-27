@@ -32,7 +32,14 @@ struct GameView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
-                if model.overlay == nil {
+                if model.isViewingValley {
+                    ViewingBar(model: model)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                            model.scene.hudBottom = $0
+                            model.fitValleyAboveViewingBar()
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if model.overlay == nil {
                     TileTray(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.scene.hudBottom = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -45,6 +52,44 @@ struct GameView: View {
         .animation(.snappy, value: model.toast)
         .animation(.snappy, value: model.mode)
         .animation(.snappy, value: model.isAimingDynamite)
+        .animation(.snappy, value: model.isViewingValley)
+    }
+}
+
+/// Shown in place of the tile tray while looking over a finished valley.
+private struct ViewingBar: View {
+    let model: GameModel
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Every hidden mountain and lake, revealed")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                Button {
+                    model.saveValleyToGallery()
+                } label: {
+                    Label(saveTitle, systemImage: model.isValleySaved ? "checkmark" : "photo.badge.plus")
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isValleySaved || model.isSavingValley)
+
+                Button("Done") { model.doneViewing() }
+                    .buttonStyle(.bordered)
+            }
+            .controlSize(.large)
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .animation(.snappy, value: model.isValleySaved)
+        .animation(.snappy, value: model.isSavingValley)
+    }
+
+    private var saveTitle: String {
+        model.isValleySaved ? "Saved" : model.isSavingValley ? "Saving…" : "Save to Gallery"
     }
 }
 
@@ -118,10 +163,11 @@ private struct TopBar: View {
     }
 }
 
-/// The mode switch and restart, labeled with where the player is.
+/// The mode switch, restart and gallery, labeled with where the player is.
 private struct GameMenu: View {
     let model: GameModel
     @State private var confirming: Confirmation?
+    @State private var isShowingGallery = false
 
     /// The destructive menu actions, which ask first.
     private enum Confirmation {
@@ -137,6 +183,9 @@ private struct GameMenu: View {
             }
             Button(restartTitle, systemImage: "arrow.counterclockwise") {
                 confirming = .restart
+            }
+            Button("Gallery", systemImage: "photo.on.rectangle.angled") {
+                isShowingGallery = true
             }
             Section {
                 Button("Reset Player", systemImage: "person.crop.circle.badge.xmark", role: .destructive) {
@@ -169,6 +218,9 @@ private struct GameMenu: View {
         }
         .animation(.snappy, value: model.level)
         .animation(.snappy, value: model.valley)
+        .sheet(isPresented: $isShowingGallery) {
+            GalleryView(gallery: model.gallery)
+        }
         .confirmationDialog(
             confirming == .resetPlayer ? "Start over as a new player?" : restartTitle,
             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
@@ -570,6 +622,13 @@ private struct OverlayCard: View {
             continueButton
         }
         Button {
+            model.viewValley()
+        } label: {
+            Label("View valley", systemImage: "binoculars.fill").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        Button {
             model.nextValley()
         } label: {
             Text("Next valley").frame(maxWidth: .infinity)
@@ -590,7 +649,7 @@ private struct OverlayCard: View {
         Text(model.canRescue ? "It doesn't match anywhere it could go. Rescue it:" : "It doesn't match anywhere it could go.")
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
-        let rescues = [PowerUp.undo, .swap, .wildcard, .dynamite].filter(model.isUnlocked)
+        let rescues = [PowerUp.swap, .undo, .wildcard, .dynamite].filter(model.isUnlocked)
         if !rescues.isEmpty {
             HStack(spacing: 8) {
                 ForEach(rescues) { powerUp in
@@ -598,14 +657,26 @@ private struct OverlayCard: View {
                 }
             }
         }
-        Button {
-            model.restart()
-        } label: {
-            Text("Retry valley").frame(maxWidth: .infinity)
+        // On bought tiles the valley is already done, so it can end as done instead of being replayed.
+        if model.game.hasFinishedStack {
+            Button {
+                model.finishValley()
+            } label: {
+                Text("Finish valley").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(model.canRescue ? .secondary : .accentColor)
+            .controlSize(.large)
+        } else {
+            Button {
+                model.restart()
+            } label: {
+                Text("Retry valley").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(model.canRescue ? .secondary : .accentColor)
+            .controlSize(.large)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(model.canRescue ? .secondary : .accentColor)
-        .controlSize(.large)
     }
 
     @ViewBuilder private var levelIntro: some View {
@@ -792,8 +863,16 @@ private struct PowerUpButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .disabled(!model.canUse(powerUp))
+        // Dynamite with nothing to blast looks off but still answers a tap, to say why.
+        .tint(explainsOnTap ? .secondary : nil)
+        .opacity(explainsOnTap ? 0.55 : 1)
+        .disabled(!model.canUse(powerUp) && !explainsOnTap)
         .accessibilityLabel("\(powerUp.title), \(powerUp.price) coins")
+        .animation(.snappy, value: explainsOnTap)
+    }
+
+    private var explainsOnTap: Bool {
+        powerUp == .dynamite && model.hasNoDynamiteTarget
     }
 }
 

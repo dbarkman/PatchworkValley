@@ -84,6 +84,23 @@ final class GameModel {
     private(set) var toast: Toast?
     private(set) var tileGain: Gain?
     private(set) var coinGain: Gain?
+    /// Looking over a finished valley, card put away, every mountain and lake in view.
+    private(set) var isViewingValley = false
+    /// The finished valley has been looked over, so it stays in full view behind its card.
+    private(set) var hasRevealedValley = false
+    /// The gallery entry saved from the finished valley, if any.
+    private var savedEntryID: UUID?
+    /// The finished valley is in the gallery (and hasn't been deleted from it since).
+    var isValleySaved: Bool {
+        savedEntryID.map { id in gallery.entries.contains { $0.id == id } } ?? false
+    }
+    /// Frame the whole valley once the view bar has settled, then leave the camera to the player.
+    @ObservationIgnored private var needsValleyFit = false
+    /// The finished valley is being drawn and written to the gallery.
+    private(set) var isSavingValley = false
+    /// Tells a save that finishes late whether it still belongs to the valley on screen.
+    @ObservationIgnored private var saveToken = UUID()
+    let gallery = Gallery()
 
     @ObservationIgnored let scene: ValleyScene
     @ObservationIgnored private let haptics = Haptics()
@@ -138,7 +155,7 @@ final class GameModel {
     var overlay: Overlay? {
         if mode == .levels && hasFinishedAllLevels { return .allLevelsDone }
         return switch (mode, game.outcome) {
-        case (.coins, .outOfTiles): .valleyDone
+        case (.coins, .outOfTiles): isViewingValley ? nil : .valleyDone
         case (.coins, .outOfRoom): isAimingDynamite ? nil : .valleyStuck
         case (.coins, _): isShowingValleyIntro ? .valleyIntro : nil
         case (.levels, .playing): isShowingLevelIntro ? .levelIntro : nil
@@ -149,6 +166,11 @@ final class GameModel {
         case (.zen, .outOfTiles): .zenOver
         case (.zen, _): nil
         }
+    }
+
+    /// The board as drawn: a finished valley that's been looked over shows everything; the run itself never changes.
+    var displayBoard: Board {
+        mode == .coins && hasRevealedValley && game.outcome == .outOfTiles ? game.board.lit() : game.board
     }
 
     var ghostEvaluation: PlacementEvaluation? {
@@ -246,10 +268,75 @@ final class GameModel {
         if mode == .coins {
             addCoins(-CoinEconomy.continuePrice)
             undoPoint = nil
+            // The valley isn't finished any more: the fog comes back, and the longer valley can be saved again.
+            resetValleyViewing()
         }
         game.continueRun()
         haptics.success()
         scene.sync()
+    }
+
+    /// Ends a valley that ran out of room on its bought tiles, as done.
+    func finishValley() {
+        guard mode == .coins, game.hasFinishedStack, game.outcome == .outOfRoom else { return }
+        coinGame.finishValley()
+        undoPoint = nil
+        resetSelection()
+        haptics.success()
+        scene.sync()
+    }
+
+    // MARK: - Viewing and saving a finished valley
+
+    /// Puts the end card away and lifts the fog off the whole finished valley.
+    func viewValley() {
+        guard overlay == .valleyDone else { return }
+        isViewingValley = true
+        hasRevealedValley = true
+        needsValleyFit = true
+        resetSelection()
+        clearFeedback()
+        haptics.select()
+        scene.sync()
+        scene.fitValley()
+    }
+
+    /// Called as the view bar settles: frames the valley above it the first time only,
+    /// so a later change in the bar's height never undoes the player's pan and zoom.
+    func fitValleyAboveViewingBar() {
+        guard needsValleyFit else { return }
+        needsValleyFit = false
+        scene.fitValley()
+    }
+
+    /// Back to the end card. The valley stays in full view behind it.
+    func doneViewing() {
+        guard isViewingValley else { return }
+        isViewingValley = false
+        scene.sync()
+    }
+
+    func saveValleyToGallery() {
+        guard isViewingValley, !isValleySaved, !isSavingValley else { return }
+        let token = UUID()
+        saveToken = token
+        isSavingValley = true
+        let picture = ValleyPicture(board: game.board)
+        let (number, coins) = (valley, game.coins)
+        Task {
+            let entry = await gallery.add(picture, valley: number, coins: coins)
+            // The player may have moved on while it saved; the entry is kept either way.
+            guard saveToken == token else { return }
+            isSavingValley = false
+            if entry == nil {
+                haptics.warn()
+                show("Couldn't save this valley", symbol: "exclamationmark.triangle")
+            } else {
+                savedEntryID = entry?.id
+                haptics.success()
+                show("Saved to your gallery", symbol: "photo.on.rectangle.angled")
+            }
+        }
     }
 
     // MARK: - Power-ups
@@ -279,12 +366,24 @@ final class GameModel {
         }
     }
 
+    /// Dynamite is on offer, but no mountain in view can be blasted: the ones found so far
+    /// are all on the valley's edge (or none are found yet), whatever the wallet holds.
+    var hasNoDynamiteTarget: Bool {
+        mode == .coins && (overlay == nil || overlay == .valleyStuck) && !isAimingDynamite
+            && isUnlocked(.dynamite) && game.current != nil && game.board.clearableMountains.isEmpty
+    }
+
     /// Any power-up that could get an out-of-room valley going again.
     var canRescue: Bool {
-        [PowerUp.undo, .swap, .wildcard, .dynamite].contains(where: canUse)
+        [PowerUp.swap, .undo, .wildcard, .dynamite].contains(where: canUse)
     }
 
     func use(_ powerUp: PowerUp) {
+        if powerUp == .dynamite && hasNoDynamiteTarget {
+            haptics.warn()
+            show("Only mountains inside the valley can be blasted, not its edge", symbol: PowerUp.dynamite.symbolName, seconds: 3)
+            return
+        }
         guard canUse(powerUp) else {
             haptics.warn()
             return
@@ -336,7 +435,7 @@ final class GameModel {
     // MARK: - Valleys
 
     /// Starts over as a brand-new player: Coin mode, valley 1, the starting wallet,
-    /// level 1 and no Zen best, as if the game were just installed.
+    /// level 1 and no Zen best, as if the game were just installed. The gallery stays.
     func resetPlayer() {
         Key.all.forEach(defaults.removeObject)
         mode = .coins
@@ -344,6 +443,7 @@ final class GameModel {
         wallet = CoinEconomy.startingWallet
         coinGame = Self.makeCoinGame(valley: 1)
         isShowingValleyIntro = true
+        resetValleyViewing()
         level = 1
         levelGame = ValleyGame(level: LevelDesigner.level(1))
         isShowingLevelIntro = true
@@ -381,6 +481,7 @@ final class GameModel {
         coinGame = Self.makeCoinGame(valley: number)
         isShowingValleyIntro = true
         isAimingDynamite = false
+        resetValleyViewing()
         undoPoint = nil
         resetSelection()
         clearFeedback()
@@ -389,7 +490,13 @@ final class GameModel {
     }
 
     private static func makeCoinGame(valley: Int) -> ValleyGame {
-        ValleyGame(seed: .random(in: .min ... .max), rules: .coins(valley: valley))
+        var rules = Rules.coins(valley: valley)
+        #if DEBUG
+        // Launch with `-startingTiles 3` to reach the end of a valley quickly.
+        let startingTiles = UserDefaults.standard.integer(forKey: "startingTiles")
+        if startingTiles > 0 { rules.startingTiles = startingTiles }
+        #endif
+        return ValleyGame(seed: .random(in: .min ... .max), rules: rules)
     }
 
     private func addCoins(_ amount: Int) {
@@ -404,6 +511,7 @@ final class GameModel {
         mode = newMode
         defaults.set(newMode.rawValue, forKey: Key.mode)
         isAimingDynamite = false
+        isViewingValley = false
         resetSelection()
         clearFeedback()
         scene.sync()
@@ -474,8 +582,16 @@ final class GameModel {
         scene.recenter()
     }
 
+    private func resetValleyViewing() {
+        isViewingValley = false
+        hasRevealedValley = false
+        savedEntryID = nil
+        isSavingValley = false
+        saveToken = UUID()
+    }
+
     private static func makeZenGame() -> ValleyGame {
-        var rules = Rules()
+        var rules = Rules.zen
         #if DEBUG
         // Launch with `-startingTiles 3` to reach the end of a Zen run quickly.
         let startingTiles = UserDefaults.standard.integer(forKey: "startingTiles")
@@ -550,12 +666,12 @@ final class GameModel {
         }
     }
 
-    private func show(_ message: String, symbol: String) {
+    private func show(_ message: String, symbol: String, seconds: Double = 2) {
         feedbackCount += 1
         let toast = Toast(id: feedbackCount, message: message, symbolName: symbol)
         self.toast = toast
         Task {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(seconds))
             if self.toast?.id == toast.id { self.toast = nil }
         }
     }

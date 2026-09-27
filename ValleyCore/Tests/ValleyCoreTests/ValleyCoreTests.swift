@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ValleyCore
 
@@ -713,20 +714,39 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
 }
 
 @Suite struct ReviewFixTests {
-    /// Buying tiles after finishing the stack can't turn a finished valley into a loss.
-    @Test func aBoughtTileThatFitsNowhereStillLeavesTheValleyFinished() {
+    /// A bought tile that fits nowhere leaves the valley rescuable, and it can always end as done.
+    @Test func aBoughtTileThatFitsNowhereCanBeRescuedOrFinished() {
         let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
-        var rules = Rules.coins(valley: 1)
-        rules.startingTiles = 1
-        var game = ValleyGame(rules: rules, board: Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true), queue: [tile("mmmfmm")], tilesLeft: 1)
-        game.placeCurrent(at: east)
-        #expect(game.outcome == .outOfTiles)
-        #expect(game.hasFinishedStack)
-        #expect(game.canContinue)
+        let board = Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true)
+        var game = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("cccccc")], tilesLeft: 3, hasFinishedStack: true)
+        #expect(game.outcome == .outOfRoom, "power-ups can still rescue it")
 
-        game.continueRun(adding: 1)
-        // Whatever the new tile is, the finished valley never becomes out of room.
-        #expect(game.outcome != .outOfRoom)
+        var swapped = game
+        swapped.swapCurrent()
+        #expect(swapped.tilesLeft == 3, "Swap still works on bought tiles")
+        #expect(swapped.current?.id != game.current?.id)
+
+        game.finishValley()
+        #expect(game.outcome == .outOfTiles, "the valley ends as done")
+        #expect(game.tilesLeft == 0)
+        #expect(game.current == nil)
+    }
+
+    @Test func finishingOnlyEndsAValleyWhoseStackWasFinished() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [], peaks: [])
+        let board = Board(starter: tile("ffffff", id: 0), crater: crater, requiresMatch: true)
+        var stuck = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("cccccc")], tilesLeft: 3)
+        stuck.finishValley()
+        #expect(stuck.outcome == .outOfRoom, "a valley still on its dealt stack can't skip ahead")
+        var playing = ValleyGame(rules: .coins(valley: 1), board: board, queue: [tile("ffffff")], tilesLeft: 3, hasFinishedStack: true)
+        playing.finishValley()
+        #expect(playing.outcome == .playing, "only a valley out of room can be finished early")
+    }
+
+    @Test func swapComesFirstAndCostsLeast() {
+        #expect(PowerUp.introduced(inValley: 1) == .swap)
+        #expect(PowerUp.introduced(inValley: 2) == .undo)
+        #expect(PowerUp.allCases.map(\.price) == [25, 50, 100, 200, 300])
     }
 
     @Test func continuingNeedsAnEmptyStack() {
@@ -953,5 +973,141 @@ private func roomKeepingMove(in game: ValleyGame, focus: [Terrain]) -> (slot: He
         }
         #expect(sawBoard)
         #expect(sawTile)
+    }
+}
+
+@Suite struct ZenFogTests {
+    @Test(arguments: 1...20)
+    func scatterLeavesTheStartClearAndNeverWallsItIn(seed: UInt64) {
+        let scatter = Scatter.generate(seed: seed, radius: 20, peakShare: 0.06, lakeShare: 0.02)
+        let start = Set([Hex.origin] + Hex.origin.neighbors)
+        #expect(scatter.peaks.isDisjoint(with: start))
+        #expect(scatter.lakes.isDisjoint(with: start))
+        #expect(scatter.peaks.isDisjoint(with: scatter.lakes))
+        #expect(Scatter.isOpen(radius: 20, blocked: scatter.peaks.union(scatter.lakes)))
+        #expect((scatter.peaks.union(scatter.lakes)).allSatisfy { $0.distance(to: .origin) <= 20 })
+        for lake in scatter.lakes {
+            #expect(lake.neighbors.allSatisfy { !scatter.lakes.contains($0) }, "lakes sit apart")
+        }
+    }
+
+    @Test func aRingOfPeaksWallsInTheStart() {
+        let ring = Set(Hex.within(radius: 2).filter { $0.distance(to: .origin) == 2 })
+        #expect(!Scatter.isOpen(radius: 6, blocked: ring))
+        #expect(Scatter.isOpen(radius: 6, blocked: ring.subtracting([Hex(2, 0)])), "one gap is enough")
+    }
+
+    @Test func scatterHitsItsShares() {
+        let area = Double(Hex.within(radius: 20).count)
+        let scatter = Scatter.generate(seed: 7, radius: 20, peakShare: 0.06, lakeShare: 0.02)
+        #expect(abs(Double(scatter.peaks.count) - area * 0.06) <= 3)
+        #expect(abs(Double(scatter.lakes.count) - area * 0.02) <= 1)
+    }
+
+    @Test func scatterIsTheSameForTheSameSeed() {
+        let first = Scatter.generate(seed: 42, radius: 12, peakShare: 0.06, lakeShare: 0.02)
+        let second = Scatter.generate(seed: 42, radius: 12, peakShare: 0.06, lakeShare: 0.02)
+        #expect(first == second)
+    }
+
+    @Test func zenHidesPeaksAndLakesOnTheOpenPlane() {
+        let game = ValleyGame(seed: 3, rules: .zen)
+        #expect(game.board.floor == nil, "no crater")
+        #expect(!game.board.mountains.isEmpty)
+        #expect(!game.board.lakes.isEmpty)
+        #expect(game.board.revealedMountains.isEmpty, "all in fog at the start")
+        #expect(game.board.revealedLakes.isEmpty)
+        #expect(!game.board.requiresMatch)
+        #expect(game.rules.allowsDiscard)
+    }
+
+    @Test func levelsAndPlainRulesStayClear() {
+        #expect(ValleyGame(seed: 3).board.mountains.isEmpty)
+        #expect(ValleyGame(level: LevelDesigner.level(1)).board.mountains.isEmpty)
+        #expect(ValleyGame(level: LevelDesigner.level(1)).board.lakes.isEmpty)
+    }
+
+    @Test func aHiddenPeakRisesWhenATileTouchesItAndBlocksTheSpot() {
+        let board0 = Board(starter: tile("mmmmmm", id: 0), scatter: Scatter(peaks: [Hex(2, 0)], lakes: [Hex(-2, 0)]))
+        var board = board0
+        #expect(board.isInFog(Hex(2, 0)))
+        board.place(tile("mmmmmm", id: 1), at: east)
+        #expect(board.revealedMountains == [Hex(2, 0)])
+        #expect(!board.openSlots.contains(Hex(2, 0)))
+        #expect(board.isInFog(Hex(-2, 0)))
+        #expect(board.openSlots.contains(Hex(3, 0)) == false, "the plane grows only from tiles")
+    }
+
+    @Test func aRiverIntoAFoundLakeCountsInZen() throws {
+        let board = Board(starter: tile("mmmmmm", id: 0), scatter: Scatter(peaks: [], lakes: [Hex(2, 0)]))
+        var game = ValleyGame(rules: .zen, board: board, queue: [tile("wmmmmm")], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.evaluation.matchingEdges.contains(0), "placing found the lake the river flows into")
+    }
+}
+
+@Suite struct ValleyPictureTests {
+    @Test func aPictureShowsEverythingEvenWhatStayedInFog() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [Hex(5, 0)], peaks: [Hex(2, 0), Hex(3, -3)], lakes: [Hex(-2, 3)])
+        var board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        board.place(tile("fmmmmm", id: 1), at: east)
+        let picture = ValleyPicture(board: board)
+        #expect(Set(picture.peaks) == [Hex(2, 0), Hex(3, -3)])
+        #expect(picture.rim == [Hex(5, 0)])
+        #expect(picture.lakes == [Hex(-2, 3)])
+        #expect(Set(picture.tiles.map(\.hex)) == [.origin, east])
+        #expect(picture.tiles.first { $0.hex == east }?.edges.first == .forest)
+    }
+
+    @Test func aPictureOnTheOpenPlaneHasNoRim() {
+        let board = Board(starter: tile("mmmmmm", id: 0), scatter: Scatter(peaks: [Hex(3, 0)], lakes: []))
+        let picture = ValleyPicture(board: board)
+        #expect(picture.rim.isEmpty)
+        #expect(picture.peaks == [Hex(3, 0)])
+    }
+
+    @Test func aPictureSurvivesSavingAndLoading() throws {
+        let game = ValleyGame(seed: 9, rules: .coins(valley: 3))
+        let picture = ValleyPicture(board: game.board)
+        let data = try JSONEncoder().encode(picture)
+        let loaded = try JSONDecoder().decode(ValleyPicture.self, from: data)
+        #expect(loaded == picture)
+        #expect(!loaded.rim.isEmpty)
+    }
+
+    @Test func viewingALitCopyLeavesTheRunInFog() {
+        let crater = Crater(radius: 4, floor: Set(Hex.within(radius: 4)), rim: [Hex(5, 0)], peaks: [Hex(3, -3)])
+        let board = Board(starter: tile("mmmmmm", id: 0), crater: crater, requiresMatch: false)
+        let lit = board.lit()
+        #expect(lit.revealedMountains == [Hex(5, 0), Hex(3, -3)])
+        #expect(board.revealedMountains.isEmpty)
+        #expect(!board.isLit)
+    }
+}
+
+@Suite struct WildcardQuestTests {
+    private let wild = Tile(id: 50, edges: Array(repeating: .wild, count: 6))
+
+    @Test func aWildcardTouchingOnlyTheQuestRegionAddsOneTile() throws {
+        let quest = tile("ffffff", id: 1, quest: QuestSpec(terrain: .forest, target: 3))
+        var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: [quest, wild], tilesLeft: 10)
+        _ = game.placeCurrent(at: east)
+        #expect(game.activeQuests.first?.remaining == 2)
+        _ = game.placeCurrent(at: Hex(2, 0))
+        #expect(game.activeQuests.first?.remaining == 1, "one tile, one step closer")
+    }
+
+    @Test func aWildcardJoiningAnotherForestCanFinishAQuestTwoShort() throws {
+        let quest = tile("ffffff", id: 1, quest: QuestSpec(terrain: .forest, target: 3))
+        let queue = [quest, tile("cccccc", id: 2), tile("ffffff", id: 3), wild]
+        var game = ValleyGame(board: Board(starter: tile("ffffff", id: 0)), queue: queue, tilesLeft: 10)
+        _ = game.placeCurrent(at: east)
+        _ = game.placeCurrent(at: Hex(0, 1))
+        _ = game.placeCurrent(at: Hex(-1, 2))
+        #expect(game.activeQuests.first?.remaining == 2, "the far forest isn't joined yet")
+        let placed = game.placeCurrent(at: Hex(-1, 1))
+        let result = try #require(placed)
+        #expect(result.completedQuests.count == 1, "the wildcard bridged the two forests")
     }
 }

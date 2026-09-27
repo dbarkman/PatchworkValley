@@ -72,11 +72,13 @@ final class ValleyScene: SKScene {
     func sync(placement: PlacementResult? = nil, blasted: Hex? = nil) {
         guard let view, let model else { return }
         let game = model.game
+        // A finished valley being looked over shows every mountain and lake, and no quest badges.
+        let shown = model.displayBoard
         syncTiles(game.board, placement: placement, in: view)
-        syncMountains(game.board, blasted: blasted, aiming: model.isAimingDynamite, in: view)
-        syncLakes(game.board, in: view)
+        syncMountains(shown, blasted: blasted, aiming: model.isAimingDynamite, in: view)
+        syncLakes(shown, in: view)
         syncSlots(game, in: view)
-        syncBadges(game, placement: placement)
+        syncBadges(game, showing: !model.isViewingValley, placement: placement)
         syncGhost(model, in: view)
         if let placement {
             playEffects(for: placement, board: game.board, in: view)
@@ -87,13 +89,13 @@ final class ValleyScene: SKScene {
         cameraNode.run(.group([
             .move(to: .zero, duration: 0.35),
             .scale(to: 1, duration: 0.35),
-        ]))
+        ]), withKey: "camera")
     }
 
     /// Zooms and pans so the whole valley (tiles, open spots, and the mountains and
     /// lakes found so far) fits between the HUD and the tray.
     func fitValley() {
-        guard let view, let board = model?.game.board else { return }
+        guard let view, let board = model?.displayBoard else { return }
         let hexes = Set(board.tiles.keys).union(board.openSlots).union(board.revealedMountains).union(board.revealedLakes)
         let centers = hexes.map { geometry.center(of: $0) }
         guard let minX = centers.map(\.x).min(), let maxX = centers.map(\.x).max(),
@@ -112,7 +114,7 @@ final class ValleyScene: SKScene {
         let target = CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2 + (freeMiddle - view.bounds.midY) * scale)
         let move = SKAction.group([.move(to: target, duration: 0.35), .scale(to: scale, duration: 0.35)])
         move.timingMode = .easeInEaseOut
-        cameraNode.run(move)
+        cameraNode.run(move, withKey: "camera")
     }
 
     private func syncTiles(_ board: Board, placement: PlacementResult?, in view: SKView) {
@@ -147,7 +149,11 @@ final class ValleyScene: SKScene {
 
     private func syncMountains(_ board: Board, blasted: Hex?, aiming: Bool, in view: SKView) {
         // Mountains the fog takes back (when a Lantern goes out) sink into it, a few at a time.
-        let fogged = mountainSprites.keys.filter { !board.revealedMountains.contains($0) }.sorted { ($0.r, $0.q) < ($1.r, $1.q) }
+        // So does one whose art no longer fits, a rim hex in one mode and a floor peak in another,
+        // and it rises again below with the right art.
+        let fogged = mountainSprites.filter { hex, sprite in
+            !board.revealedMountains.contains(hex) || sprite.texture !== mountainTexture(rim: board.floor?.contains(hex) == false, in: view)
+        }.keys.sorted { ($0.r, $0.q) < ($1.r, $1.q) }
         for (index, hex) in fogged.enumerated() {
             guard let sprite = mountainSprites.removeValue(forKey: hex) else { continue }
             if hex == blasted {
@@ -340,8 +346,8 @@ final class ValleyScene: SKScene {
         return sprite
     }
 
-    private func syncBadges(_ game: ValleyGame, placement: PlacementResult?) {
-        let active = Dictionary(uniqueKeysWithValues: game.activeQuests.map { ($0.id, $0) })
+    private func syncBadges(_ game: ValleyGame, showing: Bool, placement: PlacementResult?) {
+        let active = showing ? Dictionary(uniqueKeysWithValues: game.activeQuests.map { ($0.id, $0) }) : [:]
         for (id, badge) in badges where active[id] == nil {
             badges[id] = nil
             let completed = placement?.completedQuests.contains { $0.id == id } ?? false

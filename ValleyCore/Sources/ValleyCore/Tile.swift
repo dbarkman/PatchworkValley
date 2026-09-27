@@ -1,4 +1,4 @@
-public enum Terrain: String, CaseIterable, Hashable, Sendable {
+public enum Terrain: String, CaseIterable, Hashable, Sendable, Codable {
     case meadow, forest, field, village, water
     /// A wildcard edge from the Wildcard power-up: it matches, and joins regions of, any terrain.
     case wild
