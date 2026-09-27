@@ -51,7 +51,11 @@ private struct TopBar: View {
             HStack(spacing: 8) {
                 GameMenu(model: model)
                 Spacer(minLength: 0)
-                Stat(symbol: "star.fill", value: model.game.score, tint: .yellow)
+                if model.mode == .coins {
+                    CoinsChip(model: model)
+                } else {
+                    Stat(symbol: "star.fill", value: model.game.score, tint: .yellow)
+                }
                 TilesLeft(model: model)
             }
             objectives
@@ -99,20 +103,30 @@ private struct GameMenu: View {
             }
             #if DEBUG
             Section("Debug") {
-                Button("Next Level", systemImage: "forward.end") { model.debugJump(to: model.level + 1) }
-                Button("Previous Level", systemImage: "backward.end") { model.debugJump(to: model.level - 1) }
+                switch model.mode {
+                case .coins:
+                    Button("Add 500 Coins", systemImage: "centsign.circle") { model.debugAddCoins(500) }
+                    Button("Next Valley", systemImage: "forward.end") { model.debugJumpValley(to: model.valley + 1) }
+                    Button("Previous Valley", systemImage: "backward.end") { model.debugJumpValley(to: model.valley - 1) }
+                case .levels:
+                    Button("Next Level", systemImage: "forward.end") { model.debugJump(to: model.level + 1) }
+                    Button("Previous Level", systemImage: "backward.end") { model.debugJump(to: model.level - 1) }
+                case .zen:
+                    EmptyView()
+                }
             }
             #endif
         } label: {
             Label(menuTitle, systemImage: "line.3.horizontal")
                 .font(.headline)
                 .foregroundStyle(.primary)
-                .contentTransition(.numericText(value: Double(model.level)))
+                .contentTransition(.numericText(value: Double(model.mode == .coins ? model.valley : model.level)))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())
         }
         .animation(.snappy, value: model.level)
+        .animation(.snappy, value: model.valley)
         .confirmationDialog(restartTitle, isPresented: $isConfirmingRestart, titleVisibility: .visible) {
             Button(restartTitle, role: .destructive) { model.restart() }
         } message: {
@@ -122,6 +136,7 @@ private struct GameMenu: View {
 
     private var menuTitle: String {
         switch model.mode {
+        case .coins: "Valley \(model.valley)"
         case .levels: model.hasFinishedAllLevels ? "Levels" : "Level \(model.level)"
         case .zen: "Zen"
         }
@@ -129,9 +144,43 @@ private struct GameMenu: View {
 
     private var restartTitle: String {
         switch model.mode {
+        case .coins: "Restart Valley"
         case .levels: model.hasFinishedAllLevels ? "Start Over" : "Restart Level"
         case .zen: "New Valley"
         }
+    }
+}
+
+/// The Coin mode wallet, with a brief "+N" whenever a placement earns coins.
+private struct CoinsChip: View {
+    let model: GameModel
+
+    var body: some View {
+        Label {
+            Text(model.wallet, format: .number)
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(model.wallet)))
+        } icon: {
+            Image(systemName: "centsign.circle.fill").foregroundStyle(.yellow)
+        }
+        .font(.headline)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(alignment: .bottom) {
+            if let gain = model.coinGain {
+                Text("+\(gain.amount)")
+                    .font(.headline.bold())
+                    .foregroundStyle(.yellow)
+                    .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
+                    .alignmentGuide(.bottom) { $0[.top] - 4 }
+                    .id(gain.id)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: model.wallet)
+        .animation(.snappy, value: model.coinGain)
+        .accessibilityLabel("\(model.wallet) coins")
     }
 }
 
@@ -256,6 +305,19 @@ private struct TileTray: View {
     @ScaledMetric(relativeTo: .title) private var nextSize: CGFloat = 40
 
     var body: some View {
+        VStack(spacing: 12) {
+            tiles
+            if model.mode == .coins {
+                PowerUpBar(model: model)
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .animation(.snappy, value: model.game.current?.id)
+        .animation(.snappy, value: model.selectedSlot)
+    }
+
+    private var tiles: some View {
         HStack(spacing: 16) {
             if let tile = model.game.current {
                 // Draw the tile as it was before the player's turns and rotate the view, so each turn animates.
@@ -308,10 +370,6 @@ private struct TileTray: View {
                 }
             }
         }
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .animation(.snappy, value: model.game.current?.id)
-        .animation(.snappy, value: model.selectedSlot)
     }
 
     @ViewBuilder private var status: some View {
@@ -382,6 +440,8 @@ private struct OverlayCard: View {
     var body: some View {
         VStack(spacing: 14) {
             switch overlay {
+            case .valleyIntro: valleyIntro
+            case .valleyDone: valleyDone
             case .levelIntro: levelIntro
             case .levelWon: levelWon
             case .levelLost: levelLost
@@ -392,6 +452,64 @@ private struct OverlayCard: View {
         .padding(24)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 32)
+    }
+
+    @ViewBuilder private var valleyIntro: some View {
+        Text("Valley \(model.valley)")
+            .font(.largeTitle.bold())
+        Label("\(model.game.tilesLeft) tiles", systemImage: "hexagon.fill")
+            .font(.headline)
+            .foregroundStyle(.secondary)
+        if let powerUp = PowerUp.introduced(inValley: model.valley) {
+            VStack(spacing: 6) {
+                Text("New power-up")
+                    .font(.caption.bold())
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                Label(powerUp.title, systemImage: powerUp.symbolName)
+                    .font(.title3.weight(.semibold))
+                Text(powerUp.blurb)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                Label("\(powerUp.price) coins", systemImage: "centsign.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.vertical, 4)
+        } else {
+            Text("Quests pay coins. Spend them on power-ups.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+        }
+        Button {
+            model.beginValley()
+        } label: {
+            Text("Play").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+    }
+
+    @ViewBuilder private var valleyDone: some View {
+        Text("Valley \(model.valley) complete!")
+            .font(.title2.bold())
+        Label("\(model.game.coins) coins earned", systemImage: "centsign.circle.fill")
+            .font(.title3.weight(.semibold))
+        Text("+\(CoinEconomy.valleyBonus) more for finishing")
+            .foregroundStyle(.secondary)
+        if !model.game.nearMisses.isEmpty {
+            nearMiss
+            continueButton
+        }
+        Button {
+            model.nextValley()
+        } label: {
+            Text("Next valley").frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        // When a +3 tiles offer is showing, it leads; moving on is the quieter choice.
+        .tint(model.game.nearMisses.isEmpty ? .accentColor : .secondary)
+        .controlSize(.large)
     }
 
     @ViewBuilder private var levelIntro: some View {
@@ -499,14 +617,23 @@ private struct OverlayCard: View {
             VStack(spacing: 2) {
                 Text("+\(model.game.rules.continueTiles) tiles")
                     .font(.headline)
-                Text("Free while we prototype")
-                    .font(.caption)
-                    .opacity(0.8)
+                Group {
+                    if model.mode != .coins {
+                        Text("Free while we prototype")
+                    } else if model.canAffordMoreTiles {
+                        Label("\(CoinEconomy.continuePrice) coins", systemImage: "centsign.circle.fill")
+                    } else {
+                        Text("Needs \(CoinEconomy.continuePrice) coins")
+                    }
+                }
+                .font(.caption)
+                .opacity(0.8)
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        .disabled(!model.canAffordMoreTiles)
     }
 
     private func tileCount(_ count: Int) -> String {
@@ -527,6 +654,61 @@ private struct TerrainLabel: View {
             Image(systemName: isDone ? "checkmark.circle.fill" : terrain.symbolName)
                 .foregroundStyle(isDone ? .green : terrain.color)
                 .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+        }
+    }
+}
+
+/// Coin mode's power-ups, each showing its price. Locked ones stay hidden until their valley introduces them.
+private struct PowerUpBar: View {
+    let model: GameModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(PowerUp.allCases.filter(model.isUnlocked)) { powerUp in
+                Button {
+                    model.use(powerUp)
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: powerUp.symbolName)
+                            .font(.headline)
+                        Text(powerUp.title)
+                            .font(.caption.weight(.semibold))
+                        Label("\(powerUp.price)", systemImage: "centsign.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.canUse(powerUp))
+                .accessibilityLabel("\(powerUp.title), \(powerUp.price) coins")
+            }
+        }
+    }
+}
+
+extension PowerUp {
+    var title: String {
+        switch self {
+        case .undo: "Undo"
+        case .swap: "Swap"
+        case .wildcard: "Wildcard"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .undo: "arrow.uturn.backward"
+        case .swap: "arrow.triangle.2.circlepath"
+        case .wildcard: "sparkles"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .undo: "Take back your last tile, and the coins it earned."
+        case .swap: "Trade the tile in your hand for a fresh one."
+        case .wildcard: "Turn the tile in your hand into a patch that matches anything."
         }
     }
 }

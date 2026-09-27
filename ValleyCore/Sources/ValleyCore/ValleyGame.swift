@@ -14,8 +14,30 @@ public struct Rules: Sendable {
     public var nearMissGap = 3
     /// Points for each tile left over when a level's goals are met.
     public var unusedTileBonus = 25
+    /// Quests add tiles to the stack (Zen). When false, quests pay only points and coins, so the stack only counts down.
+    public var questsRewardTiles = true
+    public var coinsPerPerfect = 0
+    public var questCoinBase = 0
+    public var questCoinsPerTile = 0
+    /// Added to every quest target, so later coin valleys ask for more.
+    public var questTargetBonus = 0
 
     public init() {}
+
+    /// Coin mode: a 36-tile valley (6 × 6) whose quests pay coins instead of tiles.
+    /// Quests grow by one every two valleys, up to eight bigger than valley 1's.
+    public static func coins(valley: Int) -> Rules {
+        var rules = Rules()
+        rules.startingTiles = 36
+        rules.perfectBonusTiles = 0
+        rules.questsRewardTiles = false
+        rules.coinsPerPerfect = 5
+        rules.questCoinBase = 5
+        rules.questCoinsPerTile = 2
+        rules.questTargetBonus = min(8, (max(1, valley) - 1) / 2)
+        rules.continueTiles = 3
+        return rules
+    }
 
     /// Level play: no tile-carried quests and no bonus tiles, so the stack only counts down.
     public static var levels: Rules {
@@ -27,9 +49,10 @@ public struct Rules: Sendable {
     }
 
     /// Quest targets grow as the valley grows.
-    public func questBase(afterPlacing placed: Int) -> Int { 4 + placed / 10 }
+    public func questBase(afterPlacing placed: Int) -> Int { 4 + questTargetBonus + placed / 10 }
     public func questReward(for target: Int) -> Int { 3 + target / 3 }
     public func questPoints(for target: Int) -> Int { target * 10 }
+    public func questCoins(for target: Int) -> Int { questCoinBase + questCoinsPerTile * target }
 }
 
 /// A Zen-mode quest carried by a tile. It tracks the region touching the tile it came on.
@@ -92,6 +115,8 @@ public struct PlacementResult: Sendable {
     public let metGoals: [Goal]
     /// Unused-tile bonus, paid when this placement won the level.
     public let bonusPoints: Int
+    /// Coins earned, in Coin mode.
+    public let coins: Int
 }
 
 /// One run of Patchwork Valley: a level (fixed tiles, goals to meet) or Zen
@@ -100,6 +125,8 @@ public struct ValleyGame: Sendable {
     public let rules: Rules
     public private(set) var board: Board
     public private(set) var score = 0
+    /// Coins earned this run, in Coin mode.
+    public private(set) var coins = 0
     /// Tiles still to play, including the current one.
     public private(set) var tilesLeft: Int
     public private(set) var tilesPlaced = 0
@@ -192,6 +219,7 @@ public struct ValleyGame: Sendable {
 
         var earned = points(for: evaluation)
         var awarded = evaluation.isPerfect ? rules.perfectBonusTiles : 0
+        var coinsEarned = evaluation.isPerfect ? rules.coinsPerPerfect : 0
 
         if let spec = tile.quest {
             quests.append(Quest(id: tile.id, terrain: spec.terrain, target: spec.target, anchor: hex))
@@ -205,8 +233,9 @@ public struct ValleyGame: Sendable {
             quests[index].progress = region.count
             if region.count >= quest.target {
                 quests[index].status = .completed
-                awarded += rules.questReward(for: quest.target)
+                if rules.questsRewardTiles { awarded += rules.questReward(for: quest.target) }
                 earned += rules.questPoints(for: quest.target)
+                coinsEarned += rules.questCoins(for: quest.target)
                 completed.append(quests[index])
             } else if board.openEdgeCount(of: region, terrain: quest.terrain) == 0 {
                 quests[index].status = .failed
@@ -219,6 +248,7 @@ public struct ValleyGame: Sendable {
         let bonus = outcome == .won ? tilesLeft * rules.unusedTileBonus : 0
 
         score += earned + bonus
+        coins += coinsEarned
         refillQueue()
 
         return PlacementResult(
@@ -230,8 +260,21 @@ public struct ValleyGame: Sendable {
             completedQuests: completed,
             failedQuests: failed,
             metGoals: metGoals,
-            bonusPoints: bonus
+            bonusPoints: bonus,
+            coins: coinsEarned
         )
+    }
+
+    /// Swap power-up: trades the current tile for a freshly dealt one. The stack count doesn't change.
+    public mutating func swapCurrent() {
+        guard outcome == .playing, !queue.isEmpty else { return }
+        queue[0] = generator.makeTile(allowQuest: false, questBase: 0)
+    }
+
+    /// Wildcard power-up: the current tile becomes a wildcard that matches anything. The stack count doesn't change.
+    public mutating func makeCurrentWild() {
+        guard outcome == .playing, !queue.isEmpty else { return }
+        queue[0] = generator.makeWildTile()
     }
 
     /// Throws away a tile that fits nowhere. It still costs a tile.

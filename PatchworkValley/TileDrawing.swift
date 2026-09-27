@@ -17,11 +17,15 @@ struct TileDrawing {
         var layers: [Layer] = []
         let r = geometry.radius
 
-        // Ground: one wedge per edge. River edges sit on meadow banks.
+        // Ground: one wedge per edge. River edges sit on meadow banks; wildcard edges are a patchwork of every terrain.
         for direction in 0..<6 {
-            let ground = edges[direction] == .water ? Terrain.meadow : edges[direction]
+            let color = switch edges[direction] {
+            case .water: Terrain.meadow.uiColor
+            case .wild: wildPatchwork[direction].uiColor
+            default: edges[direction].uiColor
+            }
             // Stroking with the fill color hides hairline seams between wedges.
-            layers.append(Layer(path: geometry.wedgePath(direction), fill: ground.uiColor, stroke: ground.uiColor, lineWidth: 1))
+            layers.append(Layer(path: geometry.wedgePath(direction), fill: color, stroke: color, lineWidth: 1))
         }
 
         for direction in 0..<6 {
@@ -42,8 +46,28 @@ struct TileDrawing {
             layers.append(Layer(path: joint, fill: Terrain.water.uiColor))
         }
 
+        if edges.contains(.wild) {
+            layers.append(Layer(path: star(radius: r * 0.3), fill: Terrain.wild.uiColor, stroke: Terrain.wild.detailColor, lineWidth: 1.5))
+        }
+
         layers.append(Layer(path: geometry.outlinePath(inset: 0.75), stroke: Palette.rim, lineWidth: 1.5))
         return layers
+    }
+
+    /// Wedge colors for a wildcard, one terrain per side.
+    private static let wildPatchwork: [Terrain] = [.forest, .field, .village, .water, .meadow, .field]
+
+    /// A five-pointed star centered on the tile.
+    private static func star(radius: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        for point in 0..<10 {
+            let distance = point.isMultiple(of: 2) ? radius : radius * 0.45
+            let angle = CGFloat(point) * .pi / 5 + .pi / 2
+            let corner = CGPoint(x: distance * cos(angle), y: distance * sin(angle))
+            point == 0 ? path.move(to: corner) : path.addLine(to: corner)
+        }
+        path.closeSubpath()
+        return path
     }
 
     private static func details(for terrain: Terrain, direction: Int, geometry: HexGeometry) -> [Layer] {
@@ -91,7 +115,7 @@ struct TileDrawing {
                 Layer(path: roof, fill: terrain.detailColor),
             ]
 
-        case .meadow, .water:
+        case .meadow, .water, .wild:
             return []
         }
     }

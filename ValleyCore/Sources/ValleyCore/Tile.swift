@@ -1,8 +1,15 @@
 public enum Terrain: String, CaseIterable, Hashable, Sendable {
     case meadow, forest, field, village, water
+    /// A wildcard edge from the Wildcard power-up: it matches, and joins regions of, any terrain.
+    case wild
 
     /// Terrains a quest can ask the player to grow.
     public static let questable: [Terrain] = [.forest, .field, .village, .water]
+
+    /// Whether this edge counts as `terrain`: the same terrain, or a wildcard.
+    public func counts(as terrain: Terrain) -> Bool {
+        self == terrain || self == .wild
+    }
 }
 
 /// A quest printed on a tile: grow the region of `terrain` it joins to `target` tiles.
@@ -31,7 +38,10 @@ public struct Tile: Hashable, Sendable, Identifiable {
 
     public func edge(_ direction: Int) -> Terrain { edges[Hex.wrap(direction)] }
 
-    public func contains(_ terrain: Terrain) -> Bool { edges.contains(terrain) }
+    /// Whether any edge counts as `terrain`. A wildcard tile contains every terrain.
+    public func contains(_ terrain: Terrain) -> Bool { edges.contains { $0.counts(as: terrain) } }
+
+    public var isWild: Bool { edges.allSatisfy { $0 == .wild } }
 
     /// Rotates 60° clockwise per step; negative steps rotate counter-clockwise.
     public mutating func rotateClockwise(_ steps: Int = 1) {

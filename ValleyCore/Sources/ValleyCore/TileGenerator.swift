@@ -47,6 +47,12 @@ public struct TileGenerator: Sendable {
         return Tile(id: nextID, edges: edges, quest: quest)
     }
 
+    /// A tile from the Wildcard power-up: every edge matches anything.
+    public mutating func makeWildTile() -> Tile {
+        defer { nextID += 1 }
+        return Tile(id: nextID, edges: Array(repeating: .wild, count: 6))
+    }
+
     private mutating func makeLandEdges() -> [Terrain] {
         let bandCount = pick(Self.bandWeights)
         var lengths = Array(repeating: 1, count: bandCount)

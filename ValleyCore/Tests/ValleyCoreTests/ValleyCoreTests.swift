@@ -354,3 +354,86 @@ private let east = Hex(1, 0)
         #expect(board.largestRegion(of: .village).isEmpty)
     }
 }
+
+@Suite struct CoinModeTests {
+    @Test func wildcardMatchesEverySide() {
+        var board = Board(starter: tile("ffffff", id: 0))
+        board.place(tile("cccccc", id: 1), at: Hex(1, -1))
+        let evaluation = board.evaluate(Tile(id: 5, edges: Array(repeating: .wild, count: 6)), at: east)
+        #expect(evaluation.isLegal)
+        #expect(evaluation.clashingEdges.isEmpty)
+        #expect(evaluation.matchingEdges.count == 2)
+    }
+
+    @Test func wildcardMayTouchRivers() {
+        let board = Board(starter: tile("wmmwmm", id: 0))
+        #expect(board.canPlace(Tile(id: 5, edges: Array(repeating: .wild, count: 6)), at: east))
+    }
+
+    @Test func wildcardJoinsTwoForests() {
+        var board = Board(starter: tile("ffffff", id: 0))
+        board.place(tile("ffffff", id: 1), at: Hex(2, 0))
+        #expect(board.largestRegion(of: .forest).count == 1)
+        board.place(Tile(id: 5, edges: Array(repeating: .wild, count: 6)), at: east)
+        #expect(board.largestRegion(of: .forest).count == 3)
+    }
+
+    @Test func coinQuestsPayCoinsAndTheStackOnlyCountsDown() throws {
+        let questTile = tile("ffffff", quest: QuestSpec(terrain: .forest, target: 2))
+        var game = ValleyGame(rules: .coins(valley: 1), board: Board(starter: tile("ffffff", id: 0)), queue: [questTile], tilesLeft: 5)
+        let placed = game.placeCurrent(at: east)
+        let result = try #require(placed)
+        #expect(result.completedQuests.count == 1)
+        #expect(result.tilesAwarded == 0)
+        #expect(result.coins == game.rules.questCoins(for: 2))
+        #expect(game.coins == result.coins)
+        #expect(game.tilesLeft == 4)
+    }
+
+    @Test func coinValleysHold36TilesAndGrowTheirQuests() {
+        #expect(ValleyGame(seed: 1, rules: .coins(valley: 1)).tilesLeft == 36)
+        #expect(Rules.coins(valley: 1).questBase(afterPlacing: 0) < Rules.coins(valley: 9).questBase(afterPlacing: 0))
+        #expect(Rules.coins(valley: 99).questTargetBonus == Rules.coins(valley: 17).questTargetBonus)
+    }
+
+    @Test func swapDealsANewTileWithoutChangingTheCount() {
+        var game = ValleyGame(seed: 3, rules: .coins(valley: 1))
+        let before = game.current
+        game.swapCurrent()
+        #expect(game.current?.id != before?.id)
+        #expect(game.tilesLeft == 36)
+    }
+
+    @Test func wildcardReplacesTheCurrentTile() {
+        var game = ValleyGame(seed: 3, rules: .coins(valley: 1))
+        game.makeCurrentWild()
+        #expect(game.current?.isWild == true)
+        #expect(game.tilesLeft == 36)
+    }
+}
+
+/// Economy check, not a pass/fail test: enable it to see what a typical Coin valley earns
+/// when a simple bot chases the active quests.
+@Test(.disabled("Run by hand when tuning coin prices"), arguments: [1, 5, 10])
+func coinEconomyReport(valley: Int) {
+    let runs = 300
+    var totalCoins = 0
+    var totalQuests = 0
+    var nearMissRuns = 0
+    for seed in 1...runs {
+        var game = ValleyGame(seed: UInt64(seed), rules: .coins(valley: valley))
+        while !game.isOver {
+            let focus = game.activeQuests.sorted { $0.remaining < $1.remaining }.map(\.terrain)
+            guard let move = GreedyBot.bestMove(in: game, focus: focus) else {
+                game.discardCurrent()
+                continue
+            }
+            game.rotateCurrent(clockwiseSteps: move.steps)
+            game.placeCurrent(at: move.slot)
+        }
+        totalCoins += game.coins
+        totalQuests += game.quests.filter { $0.status == .completed }.count
+        if !game.nearMisses.isEmpty { nearMissRuns += 1 }
+    }
+    print("ECONOMY valley \(valley): \(totalCoins / runs) coins/valley, \(Double(totalQuests) / Double(runs)) quests/valley, near miss in \(nearMissRuns * 100 / runs)% of valleys")
+}

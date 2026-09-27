@@ -31,13 +31,13 @@ public struct Board: Sendable {
             guard let neighbor = tiles[hex.neighbor(direction)] else { continue }
             let mine = tile.edge(direction)
             let theirs = neighbor.edge(Hex.opposite(direction))
-            if mine == theirs {
+            if mine.counts(as: theirs) || theirs.counts(as: mine) {
                 matching.append(direction)
             } else {
                 clashing.append(direction)
             }
-            // Rivers must flow into rivers.
-            if (mine == .water) != (theirs == .water) { isLegal = false }
+            // Rivers must flow into rivers. A wildcard edge can be a river.
+            if mine != .wild && theirs != .wild && (mine == .water) != (theirs == .water) { isLegal = false }
         }
         return PlacementEvaluation(isLegal: isLegal, matchingEdges: matching, clashingEdges: clashing)
     }
@@ -89,11 +89,11 @@ public struct Board: Sendable {
         var pending = [start]
         while let hex = pending.popLast() {
             guard let tile = lookup(hex) else { continue }
-            for direction in 0..<6 where tile.edge(direction) == terrain {
+            for direction in 0..<6 where tile.edge(direction).counts(as: terrain) {
                 let next = hex.neighbor(direction)
                 guard !region.contains(next),
                       let nextTile = lookup(next),
-                      nextTile.edge(Hex.opposite(direction)) == terrain else { continue }
+                      nextTile.edge(Hex.opposite(direction)).counts(as: terrain) else { continue }
                 region.insert(next)
                 pending.append(next)
             }
@@ -106,7 +106,7 @@ public struct Board: Sendable {
         var count = 0
         for hex in region {
             guard let tile = tiles[hex] else { continue }
-            for direction in 0..<6 where tile.edge(direction) == terrain && tiles[hex.neighbor(direction)] == nil {
+            for direction in 0..<6 where tile.edge(direction).counts(as: terrain) && tiles[hex.neighbor(direction)] == nil {
                 count += 1
             }
         }

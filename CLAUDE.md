@@ -1,13 +1,13 @@
 # Patchwork Valley
 
-A calm iOS puzzle game. Players place hex landscape tiles and match edges. **Levels** (the main mode) give a fixed stack of tiles and region goals to meet. **Zen** is one endless-feeling valley where quests earn more tiles. Game design lives in [docs/DESIGN.md](docs/DESIGN.md), and other game concepts live in [docs/CONCEPTS.md](docs/CONCEPTS.md).
+A calm iOS puzzle game. Players place hex landscape tiles and match edges. **Coins** (the main mode) deals numbered 36-tile valleys whose quests pay coins, spent on power-ups. **Levels** give a fixed stack of tiles and region goals to meet. **Zen** is one endless-feeling valley where quests earn more tiles. Game design lives in [docs/DESIGN.md](docs/DESIGN.md), and other game concepts live in [docs/CONCEPTS.md](docs/CONCEPTS.md).
 
 ## Layout
 
-- `ValleyCore/` is a Swift package that holds every game rule: the hex grid, tiles, the seeded tile generator, the board, scoring, quests, goals and run state (`ValleyGame`), plus the designed levels (`LevelDesigner`) and the bot that proves each level beatable (`GreedyBot`). It is pure Swift with no SpriteKit, SwiftUI or UIKit imports, and it builds for iOS and macOS.
+- `ValleyCore/` is a Swift package that holds every game rule: the hex grid, tiles, the seeded tile generator, the board, scoring, quests, goals and run state (`ValleyGame`), plus the designed levels (`LevelDesigner`), the bot that proves each level beatable (`GreedyBot`), and Coin mode's power-ups and prices (`CoinEconomy.swift`). Power-ups that change the run (Swap, Wildcard) are `ValleyGame` methods; Undo is the app restoring a copy of the run, since `ValleyGame` is a value type. It is pure Swift with no SpriteKit, SwiftUI or UIKit imports, and it builds for iOS and macOS.
 - Levels must stay deterministic: a level's seed always deals the same tiles. The tile stream never depends on player actions, and the bot sorts slots before choosing, because `Set` order changes every launch. Tests fail if a rule change makes any level unbeatable for the bot; if that happens, re-pick seeds with the disabled `findLevelSeeds` test.
 - `PatchworkValley/` is the app: a SwiftUI HUD over a SpriteKit board.
-  - `GameModel` is the `@Observable` owner of both modes' runs, the saved level number and Zen best, and the player's in-progress choice (selected slot, rotation). It calls `scene.sync` after every change.
+  - `GameModel` is the `@Observable` owner of all three modes' runs, the saved valley, wallet, level number and Zen best, and the player's in-progress choice (selected slot, rotation). It calls `scene.sync` after every change.
   - `ValleyScene` only renders. `sync(placement:)` reconciles its nodes with the model, and its gestures call into the model.
   - `TileDrawing` draws a tile as a list of paths. SpriteKit (board textures) and SwiftUI `Canvas` (tray previews) both use it, so tiles look the same everywhere.
   - `HexGeometry` converts pointy-top axial coordinates to points and back, in y-up space. Direction `i` points `60° × i` counter-clockwise from east.
@@ -23,7 +23,7 @@ cd ValleyCore && swift test
 xcodebuild -project PatchworkValley.xcodeproj -scheme PatchworkValley -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 ```
 
-In Debug builds, the launch argument `-startingTiles N` starts Zen runs with N tiles, and the menu has a Debug section for jumping between levels.
+In Debug builds, the launch argument `-startingTiles N` starts Zen runs with N tiles, and the menu has a Debug section for jumping between valleys or levels and adding coins.
 
 ## Rules for changes
 

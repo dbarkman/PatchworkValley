@@ -22,6 +22,7 @@ extension Terrain {
         case .field: UIColor(red: 0.91, green: 0.79, blue: 0.35, alpha: 1)
         case .village: UIColor(red: 0.85, green: 0.62, blue: 0.47, alpha: 1)
         case .water: UIColor(red: 0.30, green: 0.61, blue: 0.84, alpha: 1)
+        case .wild: UIColor(red: 0.98, green: 0.96, blue: 0.90, alpha: 1)
         }
     }
 
@@ -33,6 +34,7 @@ extension Terrain {
         case .field: UIColor(red: 0.72, green: 0.58, blue: 0.18, alpha: 1)
         case .village: UIColor(red: 0.66, green: 0.26, blue: 0.18, alpha: 1)
         case .water: UIColor(red: 0.62, green: 0.82, blue: 0.95, alpha: 1)
+        case .wild: UIColor(red: 0.85, green: 0.65, blue: 0.20, alpha: 1)
         }
     }
 
@@ -45,6 +47,7 @@ extension Terrain {
         case .field: "carrot.fill"
         case .village: "house.fill"
         case .water: "drop.fill"
+        case .wild: "sparkles"
         }
     }
 
@@ -55,6 +58,7 @@ extension Terrain {
         case .field: "Field"
         case .village: "Village"
         case .water: "River"
+        case .wild: "Wildcard"
         }
     }
 }

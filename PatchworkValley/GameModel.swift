@@ -3,19 +3,44 @@ import SwiftUI
 import ValleyCore
 
 enum GameMode: String, CaseIterable, Identifiable {
+    /// Numbered 36-tile valleys whose quests pay coins, spent on power-ups.
+    case coins
     /// Fixed stacks of tiles with goals to meet.
     case levels
     /// One endless valley for a high score; quests earn more tiles.
     case zen
 
     var id: Self { self }
-    var title: String { self == .levels ? "Levels" : "Zen" }
-    var symbolName: String { self == .levels ? "flag.checkered" : "leaf" }
+
+    var title: String {
+        switch self {
+        case .coins: "Coins"
+        case .levels: "Levels"
+        case .zen: "Zen"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .coins: "centsign.circle"
+        case .levels: "flag.checkered"
+        case .zen: "leaf"
+        }
+    }
 }
 
 /// The card covering the board, if any.
 enum Overlay: Equatable {
-    case levelIntro, levelWon, levelLost, allLevelsDone, zenOver
+    case valleyIntro, valleyDone
+    case levelIntro, levelWon, levelLost, allLevelsDone
+    case zenOver
+}
+
+/// A Coin mode run as it was before its last placement, for Undo.
+struct UndoPoint {
+    let game: ValleyGame
+    /// Coins that placement earned, which Undo takes back.
+    let coins: Int
 }
 
 /// Short feedback shown over the board after a notable placement.
@@ -25,8 +50,8 @@ struct Toast: Equatable {
     let symbolName: String
 }
 
-/// A brief "+N" on the tile counter when a placement earns tiles.
-struct TileGain: Equatable {
+/// A brief "+N" on a counter when a placement earns tiles or coins.
+struct Gain: Equatable {
     let id: Int
     let amount: Int
 }
@@ -36,6 +61,12 @@ struct TileGain: Equatable {
 @Observable
 final class GameModel {
     private(set) var mode: GameMode
+    /// The Coin mode valley being played.
+    private(set) var valley: Int
+    private(set) var wallet: Int
+    private(set) var coinGame: ValleyGame
+    private(set) var isShowingValleyIntro = true
+    private(set) var undoPoint: UndoPoint?
     /// The level being played, or the next one up after a win. One past the last level means all are done.
     private(set) var level: Int
     private(set) var zenBest: Int
@@ -49,7 +80,8 @@ final class GameModel {
     /// Clockwise turns applied to the current tile, so views can animate the spin.
     private(set) var rotationTurns = 0
     private(set) var toast: Toast?
-    private(set) var tileGain: TileGain?
+    private(set) var tileGain: Gain?
+    private(set) var coinGain: Gain?
 
     @ObservationIgnored let scene: ValleyScene
     @ObservationIgnored private let haptics = Haptics()
@@ -58,14 +90,20 @@ final class GameModel {
 
     private enum Key {
         static let mode = "mode"
+        static let valley = "valley"
+        static let wallet = "wallet"
         static let level = "level"
         static let zenBest = "zenBest"
     }
 
     init() {
         let defaults = UserDefaults.standard
+        let valley = max(1, defaults.integer(forKey: Key.valley))
         let level = min(max(1, defaults.integer(forKey: Key.level)), LevelDesigner.levelCount + 1)
-        mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .levels
+        mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .coins
+        self.valley = valley
+        wallet = defaults.object(forKey: Key.wallet) == nil ? CoinEconomy.startingWallet : defaults.integer(forKey: Key.wallet)
+        coinGame = Self.makeCoinGame(valley: valley)
         self.level = level
         zenBest = defaults.integer(forKey: Key.zenBest)
         levelGame = ValleyGame(level: LevelDesigner.level(min(level, LevelDesigner.levelCount)))
@@ -76,12 +114,18 @@ final class GameModel {
 
     /// The run on screen.
     private(set) var game: ValleyGame {
-        get { mode == .levels ? levelGame : zenGame }
+        get {
+            switch mode {
+            case .coins: coinGame
+            case .levels: levelGame
+            case .zen: zenGame
+            }
+        }
         set {
-            if mode == .levels {
-                levelGame = newValue
-            } else {
-                zenGame = newValue
+            switch mode {
+            case .coins: coinGame = newValue
+            case .levels: levelGame = newValue
+            case .zen: zenGame = newValue
             }
         }
     }
@@ -91,6 +135,8 @@ final class GameModel {
     var overlay: Overlay? {
         if mode == .levels && hasFinishedAllLevels { return .allLevelsDone }
         return switch (mode, game.outcome) {
+        case (.coins, .outOfTiles): .valleyDone
+        case (.coins, _): isShowingValleyIntro ? .valleyIntro : nil
         case (.levels, .playing): isShowingLevelIntro ? .levelIntro : nil
         case (.levels, .won): .levelWon
         case (.levels, .outOfTiles): .levelLost
@@ -135,12 +181,20 @@ final class GameModel {
     }
 
     func place() {
+        let before = game
         guard overlay == nil, let slot = selectedSlot, let result = game.placeCurrent(at: slot) else {
             haptics.warn()
             return
         }
         resetSelection()
         if result.tilesAwarded > 0 { showTileGain(result.tilesAwarded) }
+        if mode == .coins {
+            undoPoint = UndoPoint(game: before, coins: result.coins)
+            if result.coins > 0 {
+                addCoins(result.coins)
+                showCoinGain(result.coins)
+            }
+        }
         if mode == .levels, game.outcome == .won { defaults.set(level + 1, forKey: Key.level) }
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
         announce(result)
@@ -149,16 +203,104 @@ final class GameModel {
 
     func discard() {
         game.discardCurrent()
+        undoPoint = nil
         resetSelection()
         haptics.warn()
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
         scene.sync()
     }
 
+    var canAffordMoreTiles: Bool {
+        mode != .coins || wallet >= CoinEconomy.continuePrice
+    }
+
+    /// "+N tiles" after running out: free in Levels and Zen, bought with coins in Coin mode.
     func continueRun() {
+        guard canAffordMoreTiles else {
+            haptics.warn()
+            return
+        }
+        if mode == .coins { addCoins(-CoinEconomy.continuePrice) }
         game.continueRun()
+        undoPoint = nil
         haptics.success()
         scene.sync()
+    }
+
+    // MARK: - Power-ups
+
+    func isUnlocked(_ powerUp: PowerUp) -> Bool {
+        valley >= powerUp.unlockValley
+    }
+
+    func canUse(_ powerUp: PowerUp) -> Bool {
+        guard mode == .coins, overlay == nil, isUnlocked(powerUp), game.current != nil else { return false }
+        switch powerUp {
+        case .undo:
+            // Undo also takes back the coins the placement earned.
+            guard let undoPoint else { return false }
+            return wallet - undoPoint.coins >= powerUp.price
+        case .swap:
+            return wallet >= powerUp.price
+        case .wildcard:
+            return wallet >= powerUp.price && game.current?.isWild == false
+        }
+    }
+
+    func use(_ powerUp: PowerUp) {
+        guard canUse(powerUp) else {
+            haptics.warn()
+            return
+        }
+        switch powerUp {
+        case .undo:
+            guard let undoPoint else { return }
+            coinGame = undoPoint.game
+            addCoins(-undoPoint.coins)
+        case .swap:
+            coinGame.swapCurrent()
+        case .wildcard:
+            coinGame.makeCurrentWild()
+        }
+        addCoins(-powerUp.price)
+        undoPoint = nil
+        resetSelection()
+        haptics.success()
+        scene.sync()
+    }
+
+    // MARK: - Valleys
+
+    func beginValley() {
+        isShowingValleyIntro = false
+        scene.sync()
+    }
+
+    /// Banks the finishing bonus and deals the next valley.
+    func nextValley() {
+        addCoins(CoinEconomy.valleyBonus)
+        startValley(valley + 1)
+    }
+
+    private func startValley(_ number: Int) {
+        valley = number
+        defaults.set(number, forKey: Key.valley)
+        coinGame = Self.makeCoinGame(valley: number)
+        isShowingValleyIntro = true
+        undoPoint = nil
+        resetSelection()
+        clearFeedback()
+        scene.sync()
+        scene.recenter()
+    }
+
+    private static func makeCoinGame(valley: Int) -> ValleyGame {
+        ValleyGame(seed: .random(in: .min ... .max), rules: .coins(valley: valley))
+    }
+
+    private func addCoins(_ amount: Int) {
+        wallet = max(0, wallet + amount)
+        defaults.set(wallet, forKey: Key.wallet)
     }
 
     // MARK: - Modes and levels
@@ -180,6 +322,8 @@ final class GameModel {
 
     func restart() {
         switch mode {
+        case .coins:
+            startValley(valley)
         case .levels:
             // Once every level is done, restarting means starting over.
             startLevel(hasFinishedAllLevels ? 1 : level, canRewindProgress: hasFinishedAllLevels)
@@ -209,6 +353,14 @@ final class GameModel {
     }
 
     #if DEBUG
+    func debugAddCoins(_ amount: Int) {
+        addCoins(amount)
+    }
+
+    func debugJumpValley(to number: Int) {
+        startValley(max(1, number))
+    }
+
     func debugJump(to number: Int) {
         startLevel(min(max(1, number), LevelDesigner.levelCount), canRewindProgress: true)
     }
@@ -251,10 +403,11 @@ final class GameModel {
         rotationTurns = 0
     }
 
-    /// Toasts and tile flashes belong to the run that made them.
+    /// Toasts and counter flashes belong to the run that made them.
     private func clearFeedback() {
         toast = nil
         tileGain = nil
+        coinGain = nil
     }
 
     private func turn(_ steps: Int) {
@@ -278,9 +431,18 @@ final class GameModel {
         if let goal = result.metGoals.first {
             show("\(goal.terrain.displayName) goal done!", symbol: "checkmark.circle.fill")
         } else if let quest = result.completedQuests.first {
-            show("\(quest.terrain.displayName) complete! +\(game.rules.questReward(for: quest.target)) tiles", symbol: quest.terrain.symbolName)
+            let reward = game.rules.questsRewardTiles
+                ? "+\(game.rules.questReward(for: quest.target)) tiles"
+                : "+\(game.rules.questCoins(for: quest.target)) coins"
+            show("\(quest.terrain.displayName) complete! \(reward)", symbol: quest.terrain.symbolName)
         } else if result.evaluation.isPerfect {
-            let reward = game.rules.perfectBonusTiles > 0 ? "+\(game.rules.perfectBonusTiles) tile" : "+\(game.rules.perfectPoints)"
+            let reward = if game.rules.perfectBonusTiles > 0 {
+                "+\(game.rules.perfectBonusTiles) tile"
+            } else if game.rules.coinsPerPerfect > 0 {
+                "+\(game.rules.coinsPerPerfect) coins"
+            } else {
+                "+\(game.rules.perfectPoints)"
+            }
             show("Perfect fit! \(reward)", symbol: "sparkles")
         } else if let quest = result.failedQuests.first {
             show("\(quest.terrain.displayName) quest closed off", symbol: "xmark.circle")
@@ -299,11 +461,21 @@ final class GameModel {
 
     private func showTileGain(_ amount: Int) {
         feedbackCount += 1
-        let gain = TileGain(id: feedbackCount, amount: amount)
+        let gain = Gain(id: feedbackCount, amount: amount)
         tileGain = gain
         Task {
             try? await Task.sleep(for: .seconds(1.4))
             if self.tileGain?.id == gain.id { self.tileGain = nil }
+        }
+    }
+
+    private func showCoinGain(_ amount: Int) {
+        feedbackCount += 1
+        let gain = Gain(id: feedbackCount, amount: amount)
+        coinGain = gain
+        Task {
+            try? await Task.sleep(for: .seconds(1.4))
+            if self.coinGain?.id == gain.id { self.coinGain = nil }
         }
     }
 }

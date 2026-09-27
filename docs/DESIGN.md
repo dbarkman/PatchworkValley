@@ -1,13 +1,38 @@
 # Patchwork Valley: Design
 
-## Placing tiles (both modes)
+## Modes
+
+The menu (top left) switches between three modes; each keeps its own run, so switching back and forth loses nothing.
+
+- **Coins** (the main mode for new players): numbered valleys that pay coins, spent on power-ups.
+- **Levels:** five designed levels with goals to meet.
+- **Zen:** one valley for a high score, where quests earn more tiles.
+
+## Placing tiles (all modes)
 
 - **Placing:** a tile goes in any open hex touching the valley and can be rotated first. Tapping a spot drops a ghost there in its best rotation, with stitches sewn across each matching seam. Tapping the ghost cycles through the rotations that fit, and **Place** confirms. The player always sees the current tile and the next one.
 - **Terrain:** meadow, forest, field, village and river. Rivers must connect to rivers. The other terrains may touch anything.
 - **Scoring:** 10 points per matching edge. A perfect fit (six neighbors, all matching) adds 50 points.
 - **Stuck tiles:** a tile that fits nowhere can be discarded, which costs one tile.
 
-The menu (top left) switches between Levels and Zen and restarts the current run. Each mode keeps its own run, so switching back and forth loses nothing. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`).
+The menu also restarts the current run. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
+
+## Coin mode
+
+- Each valley is a fresh board with 36 tiles (6 × 6) and random quests, as in Zen. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
+- **Coins:** a quest pays 5 + 2 per tile of its target (a forest of 8 pays 21). A perfect fit pays 5. Moving on from a finished valley pays 20. Coins stay in a wallet across valleys; new players start with 200.
+- **Valleys are numbered** and quests grow by one every two valleys, up to eight bigger than valley 1's.
+- **Power-ups** are introduced one per valley on the valley's opening card, and bought with coins from the bar under the tile tray:
+
+| Power-up | Introduced | Price | Effect |
+|---|---|---|---|
+| Undo | Valley 1 | 30 | Take back the last placement and the coins it earned |
+| Swap | Valley 2 | 40 | Trade the tile in hand for a freshly dealt one |
+| Wildcard | Valley 3 | 80 | The tile in hand becomes a patchwork that matches, and joins, any terrain |
+
+- **End of a valley:** when the stack runs out, the card shows the coins earned. If a quest is within three tiles, it offers **+3 tiles for 100 coins**; otherwise it offers the next valley.
+- **Economy:** a simple bot chasing quests earns 55–60 coins per valley (the disabled `coinEconomyReport` test), about 75–80 with the finishing bonus, so a valley pays for roughly one power-up. A quest is close at the end of 40–55% of valleys, so the +3 offer comes up often.
+- Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
 ## Levels (main mode)
 
@@ -40,9 +65,9 @@ One valley for a high score, starting with 30 tiles. Some tiles carry a quest, f
 - An optional VIP subscription (daily power-up allowance plus cosmetics) comes on top of that, never instead of it.
 - Rewarded ads, where the player chooses to watch one for a free power-up, are undecided.
 
-### Coin economy (planned)
+### Coin packs (planned)
 
-Players earn coins for every level they complete, and more for tiles to spare. Coins buy power-ups. That builds a habit: players feel they are earning something that gets them a little further each time. When their coins run out, coin packs for real money let them keep powering up. Starter coins should cover the first several continues so the habit forms before the first purchase.
+Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up.
 
 ## Visual direction
 
@@ -50,4 +75,4 @@ The look is patchwork quilt: tiles resemble fabric patches with stitched seams, 
 
 ## Prototype scope
 
-The prototype covers five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include purchases, coins, the quilt, sound, final art or a tutorial.
+The prototype covers Coin mode with three power-ups, five designed levels, Zen mode, the near-miss cards and free continues. It does not yet include real-money purchases, the quilt, sound, final art or a tutorial.
