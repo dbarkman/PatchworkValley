@@ -4,7 +4,7 @@
 
 Each run starts with one tile on the board and a stack of 30 tiles. The player sees the current tile and the next one.
 
-- **Placing:** a tile goes in any open hex touching the valley and can be rotated first. Tapping a spot drops a ghost there in its best rotation. Tapping the ghost cycles through the rotations that fit, and **Place** confirms.
+- **Placing:** a tile goes in any open hex touching the valley and can be rotated first. Tapping a spot drops a ghost there in its best rotation, with stitches sewn across each matching seam. Tapping the ghost cycles through the rotations that fit, and **Place** confirms.
 - **Terrain:** meadow, forest, field, village and river. Rivers must connect to rivers. The other terrains may touch anything.
 - **Scoring:** 10 points per matching edge. A perfect fit (six neighbors, all matching) adds 50 points and one tile.
 - **Quests:** some tiles carry a quest, for example "grow this forest to 8". The quest tracks the region connected to that tile. Completing it earns `3 + target / 3` tiles and `target × 10` points. If the region closes off before reaching the target, the quest fails. Up to three quests can be active at once, and targets grow as the valley grows.

@@ -273,13 +273,13 @@ final class ValleyScene: SKScene {
     }
 }
 
-/// The translucent preview of the current tile on the selected slot, with
-/// markers showing which edges match (green) or clash (gray). A red outline means illegal.
+/// The translucent preview of the current tile on the selected slot. Stitches
+/// sew each matching seam; a red outline means the tile can't go here.
 private final class GhostNode: SKNode {
     private let geometry: HexGeometry
     private let sprite: SKSpriteNode
     private let outline: SKShapeNode
-    private let markers = SKNode()
+    private let stitches = SKNode()
 
     init(geometry: HexGeometry) {
         self.geometry = geometry
@@ -291,7 +291,7 @@ private final class GhostNode: SKNode {
         super.init()
         addChild(sprite)
         addChild(outline)
-        addChild(markers)
+        addChild(stitches)
     }
 
     required init?(coder: NSCoder) {
@@ -301,23 +301,60 @@ private final class GhostNode: SKNode {
     func show(texture: SKTexture, evaluation: PlacementEvaluation) {
         sprite.texture = texture
         outline.strokeColor = evaluation.isLegal ? Palette.legal : Palette.illegal
-
-        markers.removeAllChildren()
-        let dots = evaluation.matchingEdges.map { ($0, Palette.legal) } + evaluation.clashingEdges.map { ($0, Palette.clash) }
-        for (direction, color) in dots {
-            let dot = SKShapeNode(circleOfRadius: geometry.radius * 0.09)
-            dot.fillColor = color
-            dot.strokeColor = .white
-            dot.lineWidth = 1.5
-            let mid = geometry.edgeMidpoint(direction)
-            dot.position = CGPoint(x: mid.x * 0.8, y: mid.y * 0.8)
-            markers.addChild(dot)
-        }
-        markers.alpha = 0
-        markers.run(.sequence([.wait(forDuration: 0.12), .fadeIn(withDuration: 0.12)]))
+        sewStitches(along: evaluation.isLegal ? evaluation.matchingEdges : [])
     }
 
-    /// Spins only the tile art; the outline and markers stay upright.
+    /// Stitches crossing each matching seam, as if sewing the two patches together,
+    /// sewn in one at a time once the spin settles.
+    private func sewStitches(along directions: [Int]) {
+        stitches.removeAllChildren()
+        let perSeam = 4
+        let length = geometry.radius * 0.24
+        for (seamIndex, direction) in directions.enumerated() {
+            let start = geometry.corner(direction - 1)
+            let end = geometry.corner(direction)
+            // Perpendicular to the seam, so each stitch spans both tiles.
+            let angle = atan2(end.y - start.y, end.x - start.x) + .pi / 2
+            for index in 0..<perSeam {
+                let t = CGFloat(index + 1) / CGFloat(perSeam + 1)
+                let stitch = makeStitch(length: length)
+                stitch.position = CGPoint(x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t)
+                stitch.zRotation = angle
+                stitch.alpha = 0
+                stitch.setScale(0.2)
+                let delay = 0.14 + Double(seamIndex) * 0.06 + Double(index) * 0.035
+                stitch.run(.sequence([
+                    .wait(forDuration: delay),
+                    .group([.fadeIn(withDuration: 0.08), .scale(to: 1, duration: 0.1)]),
+                ]))
+                stitches.addChild(stitch)
+            }
+        }
+    }
+
+    /// One stitch: a short thread over a soft shadow so it reads on every terrain color.
+    private func makeStitch(length: CGFloat) -> SKNode {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: -length / 2, y: 0))
+        path.addLine(to: CGPoint(x: length / 2, y: 0))
+
+        let shadow = SKShapeNode(path: path)
+        shadow.strokeColor = Palette.stitchShadow
+        shadow.lineWidth = 5
+        shadow.lineCap = .round
+
+        let thread = SKShapeNode(path: path)
+        thread.strokeColor = Palette.stitch
+        thread.lineWidth = 3
+        thread.lineCap = .round
+
+        let stitch = SKNode()
+        stitch.addChild(shadow)
+        stitch.addChild(thread)
+        return stitch
+    }
+
+    /// Spins only the tile art; the outline and stitches stay upright.
     func spin(to angle: CGFloat, animated: Bool = true) {
         sprite.removeAction(forKey: "spin")
         if animated {
