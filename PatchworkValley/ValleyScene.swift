@@ -32,7 +32,8 @@ final class ValleyScene: SKScene {
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
         backgroundColor = Palette.board
         for (depth, layer) in [slotLayer, tileLayer, ghostLayer, badgeLayer, effectLayer].enumerated() {
-            layer.zPosition = CGFloat(depth)
+            // Layers sit 10 apart so the small depths nodes use inside a layer never reach the next one.
+            layer.zPosition = CGFloat(depth) * 10
             addChild(layer)
         }
         addChild(cameraNode)
@@ -76,7 +77,11 @@ final class ValleyScene: SKScene {
     }
 
     private func syncTiles(_ board: Board, placement: PlacementResult?, in view: SKView) {
-        for (hex, sprite) in tileSprites where board[hex] == nil {
+        // Drop sprites whose hex emptied or now holds a different tile (a mode switch or new level
+        // swaps in a whole new board, and the starter always sits at the origin). Textures are
+        // cached per edge list, so a different texture means a different tile.
+        for (hex, sprite) in tileSprites {
+            if let tile = board[hex], sprite.texture === texture(for: tile.edges, in: view) { continue }
             tileSprites[hex] = nil
             sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
         }
@@ -326,7 +331,7 @@ private final class GhostNode: SKNode {
     private func sewStitches(along directions: [Int]) {
         stitches.removeAllChildren()
         let perSeam = 4
-        let length = geometry.radius * 0.24
+        let length = geometry.radius * 0.19
         for (seamIndex, direction) in directions.enumerated() {
             let start = geometry.corner(direction - 1)
             let end = geometry.corner(direction)
@@ -357,12 +362,12 @@ private final class GhostNode: SKNode {
 
         let shadow = SKShapeNode(path: path)
         shadow.strokeColor = Palette.stitchShadow
-        shadow.lineWidth = 5
+        shadow.lineWidth = 4
         shadow.lineCap = .round
 
         let thread = SKShapeNode(path: path)
         thread.strokeColor = Palette.stitch
-        thread.lineWidth = 3
+        thread.lineWidth = 2.5
         thread.lineCap = .round
         thread.zPosition = 1
 

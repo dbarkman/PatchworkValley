@@ -441,7 +441,7 @@ private struct OverlayCard: View {
         Text(model.game.score, format: .number)
             .font(.system(.largeTitle, design: .rounded).bold())
             .monospacedDigit()
-        Text(model.game.score >= model.zenBest ? "New best!" : "Best: \(model.zenBest.formatted())")
+        Text(model.isNewZenBest ? "New best!" : "Best: \(model.zenBest.formatted())")
             .foregroundStyle(.secondary)
         nearMiss
         continueButton

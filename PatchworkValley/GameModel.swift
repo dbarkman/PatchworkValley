@@ -39,6 +39,8 @@ final class GameModel {
     /// The level being played, or the next one up after a win.
     private(set) var level: Int
     private(set) var zenBest: Int
+    /// The current Zen run beat the saved best.
+    private(set) var isNewZenBest = false
     private(set) var levelGame: ValleyGame
     private(set) var zenGame: ValleyGame
     private(set) var isShowingLevelIntro = true
@@ -163,7 +165,7 @@ final class GameModel {
         mode = newMode
         defaults.set(newMode.rawValue, forKey: Key.mode)
         resetSelection()
-        toast = nil
+        clearFeedback()
         scene.sync()
         scene.recenter()
     }
@@ -179,8 +181,9 @@ final class GameModel {
             startLevel(level)
         case .zen:
             zenGame = Self.makeZenGame()
+            isNewZenBest = false
             resetSelection()
-            toast = nil
+            clearFeedback()
             scene.sync()
             scene.recenter()
         }
@@ -192,17 +195,19 @@ final class GameModel {
 
     #if DEBUG
     func debugJump(to number: Int) {
-        startLevel(max(1, number))
+        startLevel(max(1, number), canRewindProgress: true)
     }
     #endif
 
-    private func startLevel(_ number: Int) {
+    /// Saved progress only moves forward, so replaying a beaten level never locks the next one again.
+    private func startLevel(_ number: Int, canRewindProgress: Bool = false) {
         level = number
-        defaults.set(number, forKey: Key.level)
+        let saved = defaults.integer(forKey: Key.level)
+        defaults.set(canRewindProgress ? number : max(number, saved), forKey: Key.level)
         levelGame = ValleyGame(level: LevelDesigner.level(number))
         isShowingLevelIntro = true
         resetSelection()
-        toast = nil
+        clearFeedback()
         scene.sync()
         scene.recenter()
     }
@@ -220,6 +225,7 @@ final class GameModel {
     private func recordZenScore() {
         guard game.score > zenBest else { return }
         zenBest = game.score
+        isNewZenBest = true
         defaults.set(zenBest, forKey: Key.zenBest)
     }
 
@@ -228,6 +234,12 @@ final class GameModel {
     private func resetSelection() {
         selectedSlot = nil
         rotationTurns = 0
+    }
+
+    /// Toasts and tile flashes belong to the run that made them.
+    private func clearFeedback() {
+        toast = nil
+        tileGain = nil
     }
 
     private func turn(_ steps: Int) {

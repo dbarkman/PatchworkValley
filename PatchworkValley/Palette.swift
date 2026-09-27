@@ -8,8 +8,8 @@ enum Palette {
     static let slot = UIColor.white
     static let legal = UIColor(red: 0.55, green: 0.95, blue: 0.55, alpha: 1)
     static let illegal = UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1)
-    static let stitch = UIColor(red: 1.0, green: 0.98, blue: 0.92, alpha: 1)
-    static let stitchShadow = UIColor.black.withAlphaComponent(0.35)
+    static let stitch = UIColor(red: 0.96, green: 0.93, blue: 0.84, alpha: 0.85)
+    static let stitchShadow = UIColor.black.withAlphaComponent(0.25)
     static let houseWall = UIColor(red: 0.97, green: 0.93, blue: 0.85, alpha: 1)
 }
 
