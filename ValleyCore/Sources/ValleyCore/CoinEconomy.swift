@@ -39,8 +39,8 @@ public enum PowerUp: String, CaseIterable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// Coin mode's other numbers. A planning bot earns about 80–100 coins per valley,
-/// finishing bonus included, from matched sides, quests and perfect fits (see
+/// Coin mode's other numbers. A planning bot earns about 75–95 coins per valley from
+/// matched sides, quests and perfect fits, plus the finishing bonus (see
 /// `coinEconomyReport` in the tests): about one Wildcard a valley, and a Lantern takes three.
 public enum CoinEconomy {
     public static let startingWallet = 500

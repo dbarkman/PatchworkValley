@@ -18,3 +18,23 @@ func findLevelSeeds() {
         print("Level \(index + 1): seed \(seed.map(String.init) ?? "none found")")
     }
 }
+
+/// A design tool, not a check: enable it to find the tutorial valley's seed, the first whose
+/// opening meets every `Tutorial.Requirement`, then copy the printed seed into `Tutorial.seed`
+/// and the printed spots into `TutorialTests`. Few seeds qualify (the first is past 120,000),
+/// so it takes a few minutes.
+@Test(.disabled("Design tool: run by hand to pick the tutorial's seed"))
+func findTutorialSeed() {
+    let attempts: UInt64 = 500_000
+    var nearest: (seed: UInt64, met: Int)?
+    for seed in 1...attempts {
+        let audit = Tutorial.audit(seed: seed, stopAtFirst: true)
+        if audit.passes {
+            let spots = Tutorial.Step.allCases.compactMap { step in audit.spots[step].map { "\(step) \($0)" } }
+            print("Tutorial: seed \(seed) (searched 1...\(seed)); spots \(spots.joined(separator: ", "))")
+            return
+        }
+        if audit.met.count > (nearest?.met ?? -1) { nearest = (seed, audit.met.count) }
+    }
+    print("Tutorial: no seed in 1...\(attempts) meets every requirement; closest is \(nearest.map { "seed \($0.seed), \($0.met) met" } ?? "none")")
+}

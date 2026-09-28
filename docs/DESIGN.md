@@ -19,8 +19,8 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 ## Coin mode
 
-- Each valley is a fresh board with 36 tiles (6 × 6) and random quests, as in Zen. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
-- **The crater:** the valley floor is about 4 steps from its center to its wall, holds about 50–80 hexes, and is ringed by a mountain rim. Its edge wanders in and out (bays, points, bulges): nearly round in valley 1, getting more ragged each valley, fully ragged by valley 10. The crater's center sits up to one step from the start in valleys 1–2 and up to two from valley 3, so play often begins near a wall. The start and its six neighbors are always open floor. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for all 36 tiles.
+- Each valley is a fresh board with random quests, as in Zen. The first valleys are shorter: 24 tiles in valley 1, 30 in valley 2, and 36 from valley 3 on. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
+- **The crater:** the valley floor is about 4 steps from its center to its wall, holds about 50–80 hexes, and is ringed by a mountain rim. Its edge wanders in and out (bays, points, bulges): nearly round in valley 1, getting more ragged each valley, fully ragged by valley 10. The crater's center sits up to one step from the start in valleys 1–2 and up to two from valley 3, so play often begins near a wall. The start and its six neighbors are always open floor. Peaks and ridges stand on the floor: 6 in valley 1, one more every two valleys, up to 14. The generator always leaves room for the whole stack.
 - **Fog:** only hexes next to your tiles are visible. Placing a tile can uncover open ground, a mountain rising out of the fog, or a lake. The rim appears as you reach the edge. A Lantern lights the whole crater for one turn: when the next tile goes down, everything not touching a tile sinks back into the fog.
 - **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
@@ -48,11 +48,11 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 | Valley | Coins per valley (+20 bonus) | Quests | Out of room |
 |---|---|---|---|
-| 1 | 99 | 2.6 | 21% |
+| 1 | 75 | 2.5 | 8% |
 | 5 | 93 | 2.1 | 23% |
 | 10 | 82 | 1.4 | 27% |
 
-  With a quest always going, the bot chases quests harder and gets stuck a little more often; a purely greedy bot gets stuck about twice as often, so planning ahead pays.
+  Valley 1's shorter stack earns fewer coins and rarely runs out of room. With a quest always going, the bot chases quests harder and gets stuck a little more often; a purely greedy bot gets stuck about twice as often, so planning ahead pays.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
 ## Levels

@@ -451,8 +451,15 @@ private let east = Hex(1, 0)
         #expect(game.tilesLeft == 3)
     }
 
-    @Test func coinValleysHold36TilesAndGrowTheirQuests() {
-        #expect(ValleyGame(seed: 1, rules: .coins(valley: 1)).tilesLeft == 36)
+    /// The first valleys are shorter, to ease new players in: 24 tiles, then 30, then 36 from valley 3 on.
+    @Test func coinValleysStartShortAndGrowTo36Tiles() {
+        #expect([1, 2, 3, 10].map { Rules.coins(valley: $0).startingTiles } == [24, 30, 36, 36])
+        #expect(ValleyGame(seed: 1, rules: .coins(valley: 1)).tilesLeft == 24)
+        #expect(ValleyGame(seed: 1, rules: .coins(valley: 2)).tilesLeft == 30)
+        #expect(ValleyGame(seed: 1, rules: .coins(valley: 3)).tilesLeft == 36)
+    }
+
+    @Test func coinValleysGrowTheirQuests() {
         #expect(Rules.coins(valley: 1).questBase(afterPlacing: 0) < Rules.coins(valley: 9).questBase(afterPlacing: 0))
         #expect(Rules.coins(valley: 99).questTargetBonus == Rules.coins(valley: 19).questTargetBonus)
     }
@@ -462,14 +469,14 @@ private let east = Hex(1, 0)
         let before = game.current
         game.swapCurrent()
         #expect(game.current?.id != before?.id)
-        #expect(game.tilesLeft == 36)
+        #expect(game.tilesLeft == game.rules.startingTiles)
     }
 
     @Test func wildcardReplacesTheCurrentTile() {
         var game = ValleyGame(seed: 3, rules: .coins(valley: 1))
         game.makeCurrentWild()
         #expect(game.current?.isWild == true)
-        #expect(game.tilesLeft == 36)
+        #expect(game.tilesLeft == game.rules.startingTiles)
     }
 }
 

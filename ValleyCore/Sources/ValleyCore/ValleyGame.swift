@@ -55,11 +55,12 @@ public struct Rules: Sendable {
 
     public init() {}
 
-    /// Coin mode: a 36-tile valley (6 × 6) whose quests pay coins instead of tiles.
+    /// Coin mode: a valley whose quests pay coins instead of tiles. The first valleys are
+    /// shorter: 24 tiles in valley 1, 30 in valley 2, and 36 from valley 3 on.
     /// Quests grow by one every three valleys, up to six bigger than valley 1's.
     public static func coins(valley: Int) -> Rules {
         var rules = Rules()
-        rules.startingTiles = 36
+        rules.startingTiles = valley <= 1 ? 24 : valley == 2 ? 30 : 36
         rules.perfectBonusTiles = 0
         rules.questsRewardTiles = false
         rules.coinsPerPerfect = 5
