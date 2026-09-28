@@ -6,10 +6,10 @@ public struct PlacementEvaluation: Hashable, Sendable {
     public let matchingEdges: [Int]
     /// Directions whose edge differs from the neighbor's facing edge.
     public let clashingEdges: [Int]
-    /// Every side faces a tile or a mountain; nothing more can ever touch this spot.
+    /// Every side faces a tile, a mountain or a found lake; nothing more can ever touch this spot.
     public let isEnclosed: Bool
 
-    /// Boxed in on all sides, touching at least two tiles, and matching every one.
+    /// Boxed in on all sides, clashing with no neighbor, and matching at least two sides.
     public var isPerfect: Bool { isLegal && isEnclosed && clashingEdges.isEmpty && matchingEdges.count >= 2 }
 }
 

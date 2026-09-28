@@ -3,7 +3,7 @@ import SwiftUI
 import ValleyCore
 
 enum GameMode: String, CaseIterable, Identifiable {
-    /// Numbered 36-tile valleys whose quests pay coins, spent on power-ups.
+    /// Numbered valleys (24, 30, then 36 tiles) whose quests pay coins, spent on power-ups.
     case coins
     /// Fixed stacks of tiles with goals to meet.
     case levels
@@ -133,6 +133,27 @@ final class GameModel {
     @ObservationIgnored private var saveToken = UUID()
     let gallery = Gallery()
 
+    /// The first-run coach's step, or nil when no one is coaching.
+    private(set) var coachStep: CoachStep?
+    /// "How to Play" from the menu: the coach walks through the next tiles with the whole HUD in view.
+    private(set) var isReplayingCoach = false
+    /// The spot the coach points at for the tile in hand, fixed when its step begins.
+    private(set) var coachSpot: Hex?
+    /// The tile in hand turned the way the coached step wants it placed.
+    private(set) var coachTile: Tile?
+    /// Counts taps somewhere other than where the coach points, so the bubble can shake.
+    private(set) var coachNudges = 0
+    private(set) var glimpsePhase: GlimpsePhase?
+    /// Where the glimpse's photo frame goes, in view points.
+    private(set) var glimpseFrame: CGRect?
+    /// A one-time tip showing now.
+    private(set) var tip: Tip?
+    @ObservationIgnored private var glimpseBoard: Board?
+    @ObservationIgnored private var glimpseToken = 0
+    @ObservationIgnored private var tipsSeen: Set<String> = []
+    /// A new player on valley 1 who hasn't had the first run yet.
+    @ObservationIgnored private var needsFirstRun = false
+
     @ObservationIgnored let scene: ValleyScene
     @ObservationIgnored private let haptics = Haptics()
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -144,14 +165,17 @@ final class GameModel {
         static let wallet = "wallet"
         static let level = "level"
         static let zenBest = "zenBest"
-        static let all = [mode, valley, wallet, level, zenBest]
+        static let tutorialDone = "tutorialDone"
+        static let tipsSeen = "tipsSeen"
+        static let all = [mode, valley, wallet, level, zenBest, tutorialDone, tipsSeen]
     }
 
     init() {
         let defaults = UserDefaults.standard
         let valley = max(1, defaults.integer(forKey: Key.valley))
         let level = min(max(1, defaults.integer(forKey: Key.level)), LevelDesigner.levelCount + 1)
-        mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .coins
+        let mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .coins
+        self.mode = mode
         self.valley = valley
         let wallet = defaults.object(forKey: Key.wallet) == nil ? CoinEconomy.startingWallet : defaults.integer(forKey: Key.wallet)
         self.wallet = wallet
@@ -161,6 +185,19 @@ final class GameModel {
         zenBest = defaults.integer(forKey: Key.zenBest)
         levelGame = ValleyGame(level: LevelDesigner.level(min(level, LevelDesigner.levelCount)))
         zenGame = Self.makeZenGame()
+        tipsSeen = Set(defaults.stringArray(forKey: Key.tipsSeen) ?? [])
+        // Players already past valley 1 never need the first run.
+        let tutorialDone = defaults.bool(forKey: Key.tutorialDone)
+        if !tutorialDone && valley >= 2 { defaults.set(true, forKey: Key.tutorialDone) }
+        if !tutorialDone && valley == 1 && mode == .coins {
+            // Open on the glimpse, so the HUD never shows before the first run begins.
+            needsFirstRun = true
+            coinGame = Tutorial.makeGame()
+            isShowingValleyIntro = false
+            coachStep = .glimpse
+            glimpsePhase = .fogged
+            glimpseBoard = Tutorial.glimpse()
+        }
         scene = ValleyScene(size: CGSize(width: 390, height: 844))
         scene.model = self
     }
@@ -203,7 +240,10 @@ final class GameModel {
 
     /// The board as drawn: a finished valley that's been looked over shows everything; the run itself never changes.
     var displayBoard: Board {
-        mode == .coins && hasRevealedValley && game.outcome == .outOfTiles ? game.board.lit() : game.board
+        if coachStep == .glimpse, let glimpseBoard, let glimpsePhase, glimpsePhase != .folding {
+            return glimpsePhase == .fogged ? glimpseBoard : glimpseBoard.lit()
+        }
+        return mode == .coins && hasRevealedValley && game.outcome == .outOfTiles ? game.board.lit() : game.board
     }
 
     /// The quest chips: every quest going, plus ones that just completed or closed off, in the order they began.
@@ -227,38 +267,73 @@ final class GameModel {
 
     /// First tap on a slot moves the ghost there in its best rotation; tapping the ghost again cycles fitting rotations.
     func tap(_ hex: Hex) {
+        // A tap during the glimpse skips ahead to the first tile; one at the hand-off lets the player go.
+        if coachStep == .glimpse {
+            foldGlimpse()
+            return
+        }
+        if coachStep == .handOff { finishCoach() }
         if isAimingDynamite {
             blast(hex)
             return
         }
-        guard overlay == nil, let tile = game.current, game.board.openSlots.contains(hex) else { return }
-        if hex == selectedSlot {
+        guard overlay == nil, let tile = game.current else { return }
+        if isCoachingATile, let coachSpot, hex != coachSpot {
+            nudge()
+            return
+        }
+        guard game.board.openSlots.contains(hex) else { return }
+        dismissTip()
+        if hex == selectedSlot, isCoachingATile {
+            // A coached tile turns straight to the way the lesson wants it, and no further.
+            guard turnToCoachedRotation() else {
+                nudge()
+                return
+            }
+        } else if hex == selectedSlot {
             let steps = (1...6).first { game.board.canPlace(tile.rotatedClockwise($0), at: hex) } ?? 1
             turn(steps)
         } else {
             selectedSlot = hex
-            if let steps = game.board.bestRotation(for: tile, at: hex), steps != 0 {
+            // The turning lesson shows the tile as dealt, so the player turns it themselves.
+            if coachStep != .tile(.turn), let steps = game.board.bestRotation(for: tile, at: hex), steps != 0 {
                 turn(steps)
             }
         }
         haptics.select()
         scene.sync()
+        if coachStep == .tile(.turn), !canPlace { scene.wiggleGhost() }
     }
 
     func rotate() {
         guard overlay == nil, game.current != nil else { return }
-        turn(1)
+        if isCoachingATile {
+            guard selectedSlot != nil, turnToCoachedRotation() else {
+                nudge()
+                return
+            }
+        } else {
+            dismissTip()
+            turn(1)
+        }
         haptics.select()
         scene.sync()
     }
 
     func place() {
+        // A coached tile goes where, and the way round, the lesson says.
+        if isCoachingATile, selectedSlot != coachSpot || game.current != coachTile {
+            nudge()
+            return
+        }
         let before = game
         guard overlay == nil, let slot = selectedSlot, let result = game.placeCurrent(at: slot) else {
             haptics.warn()
             return
         }
+        dismissTip()
         resetSelection()
+        advanceCoach()
         if result.tilesAwarded > 0 { showTileGain(result.tilesAwarded) }
         showQuestEndings(result.completedQuests + result.failedQuests)
         if mode == .coins {
@@ -277,6 +352,7 @@ final class GameModel {
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
         announce(result, fogReturned: before.board.isLit)
         scene.sync(placement: result)
+        if mode == .coins { offerTipAfterPlacing() }
     }
 
     func discard() {
@@ -330,6 +406,8 @@ final class GameModel {
     /// Puts the end card away and lifts the fog off the whole finished valley.
     func viewValley() {
         guard overlay == .valleyDone else { return }
+        dismissTip()
+        showTip(.save)
         isViewingValley = true
         hasRevealedValley = true
         needsValleyFit = true
@@ -351,12 +429,14 @@ final class GameModel {
     /// Back to the end card. The valley stays in full view behind it.
     func doneViewing() {
         guard isViewingValley else { return }
+        dismissTip()
         isViewingValley = false
         scene.sync()
     }
 
     func saveValleyToGallery() {
         guard isViewingValley, !isValleySaved, !isSavingValley else { return }
+        dismissTip()
         let token = UUID()
         saveToken = token
         isSavingValley = true
@@ -418,6 +498,7 @@ final class GameModel {
     }
 
     func use(_ powerUp: PowerUp) {
+        dismissTip()
         if powerUp == .dynamite && hasNoDynamiteTarget {
             haptics.warn()
             show("Only mountains inside the valley can be blasted, not its edge", symbol: PowerUp.dynamite.symbolName, seconds: 3)
@@ -456,6 +537,7 @@ final class GameModel {
         spend(powerUp.price + takenBack, shown: powerUp.price + shownTakenBack)
         undoPoint = nil
         resetSelection()
+        recoachAfterPowerUp()
         haptics.success()
         scene.sync()
     }
@@ -473,6 +555,7 @@ final class GameModel {
         spend(PowerUp.dynamite.price)
         isAimingDynamite = false
         undoPoint = nil
+        recoachAfterPowerUp()
         haptics.success()
         scene.sync(blasted: hex)
     }
@@ -487,8 +570,11 @@ final class GameModel {
         valley = 1
         wallet = CoinEconomy.startingWallet
         stopAllFlights()
-        coinGame = Self.makeCoinGame(valley: 1)
-        isShowingValleyIntro = true
+        tipsSeen = []
+        tip = nil
+        endCoach()
+        coinGame = Tutorial.makeGame()
+        isShowingValleyIntro = false
         resetValleyViewing()
         level = 1
         levelGame = ValleyGame(level: LevelDesigner.level(1))
@@ -501,8 +587,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         haptics.success()
-        scene.sync()
-        scene.recenter()
+        startGlimpse(animated: true)
     }
 
     func fitValley() {
@@ -521,6 +606,7 @@ final class GameModel {
 
     /// Saved progress only moves forward, so replaying a finished valley never loses the next one.
     private func startValley(_ number: Int, canRewindProgress: Bool = false) {
+        if coachStep != nil { finishCoach() }
         valley = number
         let saved = defaults.integer(forKey: Key.valley)
         defaults.set(canRewindProgress ? number : max(number, saved), forKey: Key.valley)
@@ -622,10 +708,305 @@ final class GameModel {
         syncWalletShown()
     }
 
+    // MARK: - First run
+
+    /// Which HUD parts are on screen: all of them, except during the first run, which brings them in step by step.
+    var hud: HUDParts {
+        guard let coachStep, !isReplayingCoach else { return .all }
+        var parts = HUDParts(menu: false, tilesLeft: false, fit: false, quests: false, rotate: false, next: false, powerUps: false)
+        switch coachStep {
+        case .glimpse:
+            parts.topBar = false
+            parts.tray = false
+        case .tile(.place):
+            break
+        case .tile(.turn):
+            parts.rotate = true
+        case .tile(.quest):
+            parts.rotate = true
+            parts.quests = true
+        case .tile(.choice):
+            parts.rotate = true
+            parts.quests = true
+            parts.next = true
+        case .handOff:
+            return .all
+        }
+        return parts
+    }
+
+    /// Coaching one of the first tiles at a fixed spot (not the player's own choice).
+    private var isCoachingATile: Bool {
+        if case .tile(let step) = coachStep, step != .choice { return coachSpot != nil }
+        return false
+    }
+
+    /// What the coach says now. A one-time Swap tip speaks in the same bubble.
+    var coachLine: String? {
+        if tip == .swap { return Tip.swap.line }
+        guard let coachStep else { return nil }
+        switch coachStep {
+        case .glimpse:
+            return glimpsePhase == .framed ? "Finish it, and keep the picture." : "Build a valley like this, one tile at a time."
+        case .tile(.place):
+            if selectedSlot == nil { return "Tap the glowing spot." }
+            return isCoachedTileReady ? "Stitches mean the sides match. Tap Place." : "Tap the tile to turn it."
+        case .tile(.turn):
+            if selectedSlot == nil { return "Each match pays a coin. Tap the next glowing spot." }
+            return isCoachedTileReady ? "Now they match. Tap Place." : "The sides don't match. Tap the tile to turn it."
+        case .tile(.quest):
+            if selectedSlot != nil && !isCoachedTileReady { return "Tap the tile to turn it." }
+            if let quest = game.activeQuests.first {
+                let terrain = quest.terrain.displayName.lowercased()
+                let tiles = quest.remaining == 1 ? "tile" : "tiles"
+                return "Quest: add \(quest.remaining) more \(terrain) \(tiles) here for bonus coins."
+            }
+            return "Grow a quest's region to earn bonus coins."
+        case .tile(.choice):
+            return "Your turn. Put it anywhere that glows."
+        case .handOff:
+            if isReplayingCoach { return "That's the basics. Match sides, finish quests, and find what's hidden." }
+            let lakes = game.rules.lakeCount
+            return "\(game.tilesLeft) tiles to go. Can you find \(lakes) hidden \(lakes == 1 ? "lake" : "lakes")?"
+        }
+    }
+
+    /// Which of the four coached tiles is in hand, for the bubble's dots (first run only).
+    var coachStepIndex: Int? {
+        guard !isReplayingCoach, case .tile(let step) = coachStep else { return nil }
+        return step.rawValue
+    }
+
+    /// Where the coach's hand points on the board, if anywhere: the spot to tap, or the ghost to turn.
+    var coachHandHex: Hex? {
+        guard let coachSpot else { return nil }
+        switch coachStep {
+        case .tile(.place): return selectedSlot == nil ? coachSpot : nil
+        case .tile(.turn): return selectedSlot == nil || !isCoachedTileReady ? coachSpot : nil
+        default: return nil
+        }
+    }
+
+    /// The coached tile sits on its spot, turned the way the lesson wants it.
+    private var isCoachedTileReady: Bool {
+        selectedSlot == coachSpot && game.current == coachTile && canPlace
+    }
+
+    /// Place wears the coach's ring once the coached tile is ready.
+    var coachMarksPlace: Bool {
+        isCoachingATile && isCoachedTileReady
+    }
+
+    /// A big coin payout is on its way to the chip; the coach's bubble steps aside.
+    var isBigPayoutInFlight: Bool {
+        coinFlights.contains { $0.count >= 5 }
+    }
+
+    /// The hand points at Place on the first two coached tiles.
+    var coachHandOnPlace: Bool {
+        coachMarksPlace && (coachStep == .tile(.place) || coachStep == .tile(.turn))
+    }
+
+    /// Starts a new player's first run once the board is on screen.
+    func beginFirstRunIfNeeded() {
+        guard needsFirstRun else { return }
+        needsFirstRun = false
+        startGlimpse(animated: false)
+    }
+
+    /// How to Play is on offer: a Coin valley in play, nothing else on screen or in hand.
+    var canReplayCoach: Bool {
+        mode == .coins && coachStep == nil && overlay == nil && !isAimingDynamite && game.current != nil
+    }
+
+    /// "How to Play": the coach walks through the next tiles of the current valley, with the whole HUD.
+    func replayCoach() {
+        guard canReplayCoach else { return }
+        isReplayingCoach = true
+        dismissTip()
+        resetSelection()
+        enterCoachStep(.tile(.place))
+        scene.sync()
+    }
+
+    /// Skip: the first run ends and the whole game is there.
+    func skipCoach() {
+        if coachStep == .glimpse { scene.recenter() }
+        finishCoach()
+    }
+
+    /// The first run is over (or a replay is): the whole HUD, and it won't start again.
+    func finishCoach() {
+        guard coachStep != nil else { return }
+        if !isReplayingCoach { defaults.set(true, forKey: Key.tutorialDone) }
+        endCoach()
+        scene.sync()
+    }
+
+    private func endCoach() {
+        glimpseToken += 1
+        coachStep = nil
+        coachSpot = nil
+        coachTile = nil
+        isReplayingCoach = false
+        glimpsePhase = nil
+        glimpseFrame = nil
+        glimpseBoard = nil
+    }
+
+    /// The glimpse: the finished valley under fog, the fog lifting, a photo frame, then it folds away.
+    /// On a first launch it opens already framed; after Reset Player the camera glides to it.
+    private func startGlimpse(animated: Bool) {
+        glimpseToken += 1
+        let token = glimpseToken
+        coachStep = .glimpse
+        glimpseBoard = Tutorial.glimpse()
+        glimpsePhase = .fogged
+        resetSelection()
+        // The HUD is hidden, so the valley is framed on the whole screen.
+        scene.hudTop = 0
+        scene.hudBottom = 0
+        scene.sync()
+        scene.fitValley(animated: animated)
+        Task {
+            try? await Task.sleep(for: .seconds(0.8))
+            guard glimpseToken == token else { return }
+            glimpsePhase = .lit
+            scene.sync()
+            scene.fitValley()
+            try? await Task.sleep(for: .seconds(1.4))
+            guard glimpseToken == token else { return }
+            glimpseFrame = scene.screenRect(of: displayBoard.tiles.keys)
+            glimpsePhase = .framed
+            try? await Task.sleep(for: .seconds(1.6))
+            guard glimpseToken == token else { return }
+            foldGlimpse()
+        }
+    }
+
+    /// The glimpse's valley folds away, outer ring first, down to the one tile the player starts from.
+    private func foldGlimpse() {
+        guard coachStep == .glimpse else { return }
+        glimpseToken += 1
+        let token = glimpseToken
+        glimpsePhase = .folding
+        glimpseFrame = nil
+        scene.sync()
+        scene.recenter()
+        Task {
+            try? await Task.sleep(for: .seconds(0.9))
+            guard glimpseToken == token else { return }
+            glimpsePhase = nil
+            glimpseBoard = nil
+            enterCoachStep(.tile(.place))
+            scene.sync()
+        }
+    }
+
+    /// Moves to the coach step after a placement, and ends the coach if the valley is over.
+    private func advanceCoach() {
+        guard let coachStep else { return }
+        if game.isOver {
+            // The caller draws the placement next, so no redraw here.
+            if !isReplayingCoach { defaults.set(true, forKey: Key.tutorialDone) }
+            endCoach()
+            return
+        }
+        switch coachStep {
+        case .tile(.place): enterCoachStep(.tile(.turn))
+        case .tile(.turn): enterCoachStep(.tile(isReplayingCoach ? .choice : .quest))
+        case .tile(.quest): enterCoachStep(.tile(.choice))
+        case .tile(.choice): enterCoachStep(.handOff)
+        case .glimpse, .handOff: break
+        }
+    }
+
+    /// Enters `step`, fixing the spot to coach. A coached tile with nothing to show (on a replay,
+    /// a valley may have no spot that teaches turning) moves on to the next step.
+    private func enterCoachStep(_ step: CoachStep) {
+        var step = step
+        coachSpot = nil
+        coachTile = nil
+        while case .tile(let tileStep) = step, tileStep != .choice {
+            if let spot = Tutorial.spot(for: tileStep, in: game), let tile = game.current {
+                coachSpot = spot
+                let turns = tileStep == .turn
+                    ? Tutorial.firstFittingTurn(for: tile, at: spot, on: game.board)
+                    : game.board.bestRotation(for: tile, at: spot)
+                coachTile = tile.rotatedClockwise(turns ?? 0)
+                break
+            }
+            step = switch tileStep {
+            case .place: .tile(.turn)
+            case .turn: .tile(isReplayingCoach ? .choice : .quest)
+            case .quest, .choice: .tile(.choice)
+            }
+        }
+        coachStep = step
+    }
+
+    /// Turns the tile in hand to the coached rotation. False when it's already there.
+    private func turnToCoachedRotation() -> Bool {
+        guard let coachTile, let current = game.current, current != coachTile,
+              let steps = (1...5).first(where: { current.rotatedClockwise($0) == coachTile }) else { return false }
+        turn(steps)
+        return true
+    }
+
+    /// A power-up changed the run mid-coach (How to Play): coach the new tile afresh, or stop if the valley can't go on.
+    private func recoachAfterPowerUp() {
+        guard let coachStep else { return }
+        if game.isOver || game.isStuck {
+            endCoach()
+        } else if case .tile(let step) = coachStep {
+            enterCoachStep(.tile(step))
+        }
+    }
+
+    /// A tap somewhere other than where the coach points: the spot pops and the bubble shakes.
+    private func nudge() {
+        coachNudges += 1
+        haptics.select()
+        scene.nudgeSpotlight()
+    }
+
+    // MARK: - Tips
+
+    /// After a placement, a one-time tip if the moment calls for one.
+    private func offerTipAfterPlacing() {
+        guard coachStep == nil else { return }
+        switch game.outcome {
+        case .outOfTiles:
+            showTip(.viewValley)
+        case .outOfRoom:
+            showTip(.noRoom)
+        case .playing:
+            guard let current = game.current, canUse(.swap) else { return }
+            let fits = game.board.openSlots.filter { game.board.bestRotation(for: current, at: $0) != nil }.count
+            if fits <= 2 { showTip(.swap) }
+        case .won:
+            break
+        }
+    }
+
+    /// Shows `tip` the first time only.
+    private func showTip(_ newTip: Tip) {
+        guard coachStep == nil, !tipsSeen.contains(newTip.rawValue) else { return }
+        tipsSeen.insert(newTip.rawValue)
+        defaults.set(Array(tipsSeen).sorted(), forKey: Key.tipsSeen)
+        tip = newTip
+    }
+
+    private func dismissTip() {
+        tip = nil
+    }
+
     // MARK: - Modes and levels
 
     func switchMode(to newMode: GameMode) {
         guard newMode != mode else { return }
+        if coachStep != nil { finishCoach() }
+        dismissTip()
         mode = newMode
         defaults.set(newMode.rawValue, forKey: Key.mode)
         isAimingDynamite = false
@@ -673,7 +1054,6 @@ final class GameModel {
         startLevel(1, canRewindProgress: true)
     }
 
-    #if DEBUG
     func debugAddCoins(_ amount: Int) {
         addCoins(amount)
         syncWalletShown()
@@ -687,7 +1067,6 @@ final class GameModel {
     func debugJump(to number: Int) {
         startLevel(min(max(1, number), LevelDesigner.levelCount), canRewindProgress: true)
     }
-    #endif
 
     /// Saved progress only moves forward, so replaying a beaten level never locks the next one again.
     private func startLevel(_ number: Int, canRewindProgress: Bool = false) {
@@ -741,6 +1120,7 @@ final class GameModel {
         coinChange = nil
         stopAllFlights()
         endedQuestIDs = []
+        tip = nil
     }
 
     /// Keeps the chips of quests that just ended on screen, marked done or closed off, then lets them go.
@@ -792,7 +1172,7 @@ final class GameModel {
             show("Perfect fit! \(reward)", symbol: "sparkles")
         } else if let quest = result.failedQuests.first {
             show("\(quest.terrain.displayName) quest closed off", symbol: "xmark.circle")
-        } else if let quest = result.startedQuests.first {
+        } else if let quest = result.startedQuests.first, coachStep == nil || isReplayingCoach {
             show("New quest: \(quest.terrain.displayName) to \(quest.target)", symbol: quest.terrain.symbolName)
         } else if fogReturned {
             show("The fog rolls back in", symbol: "cloud.fog.fill")

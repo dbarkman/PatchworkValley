@@ -12,10 +12,10 @@ The menu (top left) switches between three modes; each keeps its own run, so swi
 
 - **Placing:** a tile goes in any open hex touching the valley and can be rotated first. Tapping a spot drops a ghost there in its best rotation, with stitches sewn across each matching seam. Tapping the ghost cycles through the rotations that fit, and **Place** confirms. The player always sees the current tile and the next one.
 - **Terrain:** meadow, forest, field, village and river. Rivers must connect to rivers. The other terrains may touch anything. In Coin mode and Zen, some water tiles are **lakes**: a pond with a single river flowing in, so rivers can end. Levels deal rivers only.
-- **Scoring (Levels and Zen):** 10 points per matching edge. A perfect fit (boxed in on every side, every neighbor matching) adds 50 points. Coin mode pays coins instead.
+- **Scoring (Levels and Zen):** 10 points per matching edge. A **perfect fit** leaves the tile no open side (every side touches a tile, a mountain or a found lake), clashes with no neighbor, and matches at least two sides (a river into a lake counts); it's judged once the tile is down, so what it uncovers counts. It adds 50 points (Zen also gives a tile). Coin mode pays coins instead.
 - **Stuck tiles (Levels and Zen):** a tile that fits nowhere can be discarded, which costs one tile. Coin mode has no discards; see *Win or lose* below.
 
-Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1 and no Zen best. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
+Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1, no Zen best, and the first run and tips again (the gallery stays). The menu's **Debug** section (add coins, jump between valleys or levels) is in every build while the game is in testing. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
 
 ## Coin mode
 
@@ -94,10 +94,25 @@ Finished Coin valleys can be saved from the *View valley* screen. The menu's **G
 
 Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up. The starting wallet should let a new player try each early power-up a couple of times and get hooked, and a few free power-ups at the start (as the bus game does) are worth trying.
 
+## First run
+
+A new player on valley 1 is coached through the first tiles instead of reading rules; players past valley 1 never see it. It takes about 45 seconds, and **Skip** is always there.
+
+- **Glimpse (about 5 seconds):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog; the fog lifts ("Build a valley like this, one tile at a time."), a white photo frame drops around it ("Finish it, and keep the picture."), then it folds away, outer ring first, to the single starting tile. A tap skips to the fold.
+- **Four coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 120854), with dots showing the four steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place.
+  1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches, and Place wears a ring and the hand. One coin flies in.
+  2. *Turn:* Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins.
+  3. *Quest:* the quest chip and badge appear ("Quest: add 1 more field tile here for bonus coins."); one spot glows with no hand, and it finishes the quest.
+  4. *Choice:* Next appears; every fitting spot glows ("Your turn. Put it anywhere that glows.").
+- **Hand-off:** the menu, tiles left, fit and the power-ups slide in: "20 tiles to go. Can you find 2 hidden lakes?" with **Let's go** (or tap any spot).
+- A tap anywhere but the coached spot shakes the line and pops the spot. "New quest" toasts stay quiet until the hand-off.
+- **One-time tips** afterwards, each gone with the next action: a tile that fits 2 spots or fewer rings Swap ("Tricky tile? Your coins can Swap it for another."); the first out-of-room card adds "It happens! A power-up can rescue this tile."; the first finished valley rings View valley ("Lift the fog and see what you built."); the first look over it rings Save.
+- **How to Play** in the menu (Coin mode) coaches the next tiles of the current valley with the whole HUD in view: place, turn when a spot can teach it, choice, then a closing line.
+
 ## Visual direction
 
-The look is patchwork quilt: tiles resemble fabric patches with stitched seams, and a finished region gets "sewn" together. This gives the game an identity distinct from Dorfromantik. A planned meta layer builds on it: each completed level becomes a patch sewn into the player's growing quilt. The prototype uses flat placeholder art drawn in code, and the app icon (`PatchworkValley/Assets.xcassets/AppIcon.appiconset`, one 1024×1024 universal slot) is still empty.
+The look is patchwork quilt: tiles resemble fabric patches with stitched seams, and a finished region gets "sewn" together. This gives the game an identity distinct from Dorfromantik. A planned meta layer builds on it: each completed level becomes a patch sewn into the player's growing quilt. The prototype uses flat placeholder art drawn in code. The app icon, Stitched Hills (a hexagon window onto fabric hills sewn with cream stitches), is one opaque 1024×1024 PNG in `PatchworkValley/Assets.xcassets/AppIcon.appiconset`, drawn from `docs/AppIcon.svg`.
 
 ## Prototype scope
 
-The prototype covers Coin mode (irregular craters, fog, mountains, lakes, a quest always going, five power-ups), five designed levels, Zen mode, the near-miss cards, Reset Player and camera fit. It does not yet include an app icon, real-money purchases, free starter power-ups, the quilt, sound, final art or a tutorial.
+The prototype covers Coin mode (irregular craters, fog, mountains, lakes, a quest always going, five power-ups, coin flights), five designed levels, Zen mode, the near-miss cards, the first run and tips, View valley and the gallery, Reset Player and camera fit. It does not yet include real-money purchases, free starter power-ups, the quilt, sound, final art or sharing.

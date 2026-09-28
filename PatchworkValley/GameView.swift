@@ -10,6 +10,8 @@ struct GameView: View {
             SpriteView(scene: model.scene, options: [.ignoresSiblingOrder])
                 .ignoresSafeArea()
 
+            GlimpseFrameLayer(frame: model.glimpseFrame)
+
             // Cards sit under the HUD so the menu stays reachable from any card.
             if let overlay = model.overlay {
                 Color.black.opacity(0.4)
@@ -20,8 +22,11 @@ struct GameView: View {
             }
 
             VStack(spacing: 12) {
-                TopBar(model: model)
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { model.scene.hudTop = $0 }
+                if model.hud.topBar {
+                    TopBar(model: model)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { model.scene.hudTop = $0 }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if model.isAimingDynamite {
                     AimingBanner(model: model)
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -32,6 +37,17 @@ struct GameView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
+                // The coach speaks above the tray; it steps aside while a big coin payout pours in.
+                if let line = model.coachLine, !model.isBigPayoutInFlight {
+                    CoachBubble(
+                        line: line,
+                        stepIndex: model.coachStepIndex,
+                        nudges: model.coachNudges,
+                        onSkip: model.coachStep != nil && model.coachStep != .handOff ? { model.skipCoach() } : nil,
+                        onGo: model.coachStep == .handOff ? { model.finishCoach() } : nil
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if model.isViewingValley {
                     ViewingBar(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
@@ -39,7 +55,7 @@ struct GameView: View {
                             model.fitValleyAboveViewingBar()
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if model.overlay == nil {
+                } else if model.overlay == nil && model.hud.tray {
                     TileTray(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.scene.hudBottom = $0 }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -55,6 +71,11 @@ struct GameView: View {
         .animation(.snappy, value: model.mode)
         .animation(.snappy, value: model.isAimingDynamite)
         .animation(.snappy, value: model.isViewingValley)
+        .animation(.snappy, value: model.coachStep)
+        .animation(.snappy, value: model.tip)
+        .animation(.snappy, value: model.coachLine)
+        .animation(.snappy, value: model.isBigPayoutInFlight)
+        .task { model.beginFirstRunIfNeeded() }
     }
 }
 
@@ -144,7 +165,7 @@ private struct ViewingBar: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("Every hidden mountain and lake, revealed")
+            Text(model.tip == .save ? Tip.save.line : "Every hidden mountain and lake, revealed")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -158,6 +179,7 @@ private struct ViewingBar: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isValleySaved || model.isSavingValley)
+                .coachMark(model.tip == .save)
 
                 Button("Done") { model.doneViewing() }
                     .buttonStyle(.bordered)
@@ -200,23 +222,35 @@ private struct TopBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                GameMenu(model: model)
+                if model.hud.menu {
+                    GameMenu(model: model)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 Spacer(minLength: 0)
                 if model.mode == .coins {
                     CoinsChip(model: model)
                 } else {
                     Stat(symbol: "star.fill", value: model.game.score, tint: .yellow)
                 }
-                TilesLeft(model: model)
+                if model.hud.tilesLeft {
+                    TilesLeft(model: model)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
             HStack(alignment: .top, spacing: 8) {
-                objectives
+                if model.hud.quests {
+                    objectives
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 Spacer(minLength: 0)
-                Button("Fit valley", systemImage: "arrow.down.right.and.arrow.up.left") { model.fitValley() }
-                    .labelStyle(.iconOnly)
-                    .font(.headline)
-                    .padding(10)
-                    .background(.regularMaterial, in: Circle())
+                if model.hud.fit {
+                    Button("Fit valley", systemImage: "arrow.down.right.and.arrow.up.left") { model.fitValley() }
+                        .labelStyle(.iconOnly)
+                        .font(.headline)
+                        .padding(10)
+                        .background(.regularMaterial, in: Circle())
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
         }
         .animation(.snappy, value: model.game.goals)
@@ -269,12 +303,18 @@ private struct GameMenu: View {
             Button("Gallery", systemImage: "photo.on.rectangle.angled") {
                 isShowingGallery = true
             }
+            if model.mode == .coins {
+                Button("How to Play", systemImage: "questionmark.circle") {
+                    model.replayCoach()
+                }
+                .disabled(!model.canReplayCoach)
+            }
             Section {
                 Button("Reset Player", systemImage: "person.crop.circle.badge.xmark", role: .destructive) {
                     confirming = .resetPlayer
                 }
             }
-            #if DEBUG
+            // Kept in every build while the game is in testing.
             Section("Debug") {
                 switch model.mode {
                 case .coins:
@@ -288,7 +328,6 @@ private struct GameMenu: View {
                     EmptyView()
                 }
             }
-            #endif
         } label: {
             Label(menuTitle, systemImage: "line.3.horizontal")
                 .font(.headline)
@@ -600,14 +639,16 @@ private struct TileTray: View {
     var body: some View {
         VStack(spacing: 12) {
             tiles
-            if model.mode == .coins {
+            if model.mode == .coins && model.hud.powerUps {
                 PowerUpBar(model: model)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .animation(.snappy, value: model.game.current?.id)
         .animation(.snappy, value: model.selectedSlot)
+        .animation(.snappy, value: model.hud)
     }
 
     private var tiles: some View {
@@ -627,18 +668,21 @@ private struct TileTray: View {
                     .accessibilityLabel("Current tile. Tap to rotate.")
             }
 
-            VStack(spacing: 4) {
-                Text("Next")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let next = model.game.next {
-                    TilePreview(tile: next)
-                        .frame(width: nextSize, height: nextSize)
-                        .id(next.id)
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    Color.clear.frame(width: nextSize, height: nextSize)
+            if model.hud.next {
+                VStack(spacing: 4) {
+                    Text("Next")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let next = model.game.next {
+                        TilePreview(tile: next)
+                            .frame(width: nextSize, height: nextSize)
+                            .id(next.id)
+                            .transition(.scale.combined(with: .opacity))
+                    } else {
+                        Color.clear.frame(width: nextSize, height: nextSize)
+                    }
                 }
+                .transition(.scale.combined(with: .opacity))
             }
 
             Spacer(minLength: 0)
@@ -648,9 +692,12 @@ private struct TileTray: View {
                     .font(.subheadline)
                     .multilineTextAlignment(.trailing)
                 HStack(spacing: 8) {
-                    Button("Rotate", systemImage: "arrow.clockwise") { model.rotate() }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.bordered)
+                    if model.hud.rotate {
+                        Button("Rotate", systemImage: "arrow.clockwise") { model.rotate() }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.bordered)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                     if model.game.isStuck && model.game.rules.allowsDiscard {
                         Button("Discard") { model.discard() }
                             .buttonStyle(.borderedProminent)
@@ -659,6 +706,7 @@ private struct TileTray: View {
                         Button("Place") { model.place() }
                             .buttonStyle(.borderedProminent)
                             .disabled(!model.canPlace)
+                            .coachMark(model.coachMarksPlace, hand: model.coachHandOnPlace)
                     }
                 }
             }
@@ -799,7 +847,7 @@ private struct OverlayCard: View {
             .font(.title2.bold())
         Label("\(model.game.coins) coins earned", systemImage: "centsign.circle.fill")
             .font(.title3.weight(.semibold))
-        Text("Plus a \(CoinEconomy.valleyBonus)-coin finishing bonus")
+        Text("Plus a \(CoinEconomy.valleyBonus) coin finishing bonus")
             .foregroundStyle(.secondary)
         // Quests the valley ends without; +3 tiles is offered when one is within three tiles.
         let unfinished = model.game.unfinishedQuests
@@ -814,6 +862,12 @@ private struct OverlayCard: View {
         if model.offersMoreTiles {
             continueButton
         }
+        if model.tip == .viewValley {
+            Text(Tip.viewValley.line)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .transition(.opacity)
+        }
         Button {
             model.viewValley()
         } label: {
@@ -821,6 +875,7 @@ private struct OverlayCard: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.large)
+        .coachMark(model.tip == .viewValley)
         Button {
             model.nextValley()
         } label: {
@@ -842,6 +897,12 @@ private struct OverlayCard: View {
         Text(model.canRescue ? "It doesn't match anywhere it could go. Rescue it:" : "It doesn't match anywhere it could go.")
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
+        if model.tip == .noRoom {
+            Text(Tip.noRoom.line)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .transition(.opacity)
+        }
         let rescues = [PowerUp.swap, .undo, .wildcard, .dynamite].filter(model.isUnlocked)
         if !rescues.isEmpty {
             HStack(spacing: 8) {
@@ -1056,6 +1117,7 @@ private struct PowerUpButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
+        .coachMark(model.tip == .swap && powerUp == .swap)
         // Dynamite with nothing to blast looks off but still answers a tap, to say why.
         .tint(explainsOnTap ? .secondary : nil)
         .opacity(explainsOnTap ? 0.55 : 1)

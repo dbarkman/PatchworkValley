@@ -28,6 +28,7 @@ final class ValleyScene: SKScene {
     private var slotTexture: SKTexture?
     private var flashTexture: SKTexture?
     private var ghost: GhostNode?
+    private var coachHand: SKNode?
     private weak var gestureView: SKView?
 
     private static let zoomRange: ClosedRange<CGFloat> = 0.7...3
@@ -63,6 +64,8 @@ final class ValleyScene: SKScene {
             view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(handlePinch)))
         }
         sync()
+        // A first run opens on the glimpse's whole valley, already framed.
+        if model?.coachStep == .glimpse { fitValley(animated: false) }
     }
 
     // MARK: - Reconciling with the model
@@ -74,12 +77,13 @@ final class ValleyScene: SKScene {
         let game = model.game
         // A finished valley being looked over shows every mountain and lake, and no quest badges.
         let shown = model.displayBoard
-        syncTiles(game.board, placement: placement, in: view)
+        syncTiles(shown, placement: placement, in: view)
         syncMountains(shown, blasted: blasted, aiming: model.isAimingDynamite, in: view)
         syncLakes(shown, in: view)
         syncSlots(game, in: view)
-        syncBadges(game, showing: !model.isViewingValley, placement: placement)
+        syncBadges(game, showing: !model.isViewingValley && model.hud.quests, placement: placement)
         syncGhost(model, in: view)
+        syncCoachHand(model, in: view)
         if let placement {
             playEffects(for: placement, board: game.board, in: view)
         }
@@ -100,7 +104,7 @@ final class ValleyScene: SKScene {
 
     /// Zooms and pans so the whole valley (tiles, open spots, and the mountains and
     /// lakes found so far) fits between the HUD and the tray.
-    func fitValley() {
+    func fitValley(animated: Bool = true) {
         guard let view, let board = model?.displayBoard else { return }
         let hexes = Set(board.tiles.keys).union(board.openSlots).union(board.revealedMountains).union(board.revealedLakes)
         let centers = hexes.map { geometry.center(of: $0) }
@@ -118,6 +122,12 @@ final class ValleyScene: SKScene {
         // Put the valley's middle in the middle of the free band, not the middle of the screen.
         let freeMiddle = (top + bottom) / 2
         let target = CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2 + (freeMiddle - view.bounds.midY) * scale)
+        guard animated else {
+            cameraNode.removeAction(forKey: "camera")
+            cameraNode.position = target
+            cameraNode.setScale(scale)
+            return
+        }
         let move = SKAction.group([.move(to: target, duration: 0.35), .scale(to: scale, duration: 0.35)])
         move.timingMode = .easeInEaseOut
         cameraNode.run(move, withKey: "camera")
@@ -127,10 +137,20 @@ final class ValleyScene: SKScene {
         // Drop sprites whose hex emptied or now holds a different tile (a mode switch or new level
         // swaps in a whole new board, and the starter always sits at the origin). Textures are
         // cached per edge list, so a different texture means a different tile.
-        for (hex, sprite) in tileSprites {
-            if let tile = board[hex], sprite.texture === texture(for: tile.edges, in: view) { continue }
+        let stale = tileSprites.filter { hex, sprite in
+            guard let tile = board[hex] else { return true }
+            return sprite.texture !== texture(for: tile.edges, in: view)
+        }
+        // A whole valley going away (the glimpse, a new valley) folds up from the outside in.
+        let farthest = stale.keys.map { $0.distance(to: .origin) }.max() ?? 0
+        for (hex, sprite) in stale {
             tileSprites[hex] = nil
-            sprite.run(.sequence([.fadeOut(withDuration: 0.2), .removeFromParent()]))
+            let delay = stale.count > 3 ? Double(farthest - hex.distance(to: .origin)) * 0.06 : 0
+            sprite.run(.sequence([
+                .wait(forDuration: delay),
+                .group([.fadeOut(withDuration: 0.2), .scale(to: 0.6, duration: 0.2)]),
+                .removeFromParent(),
+            ]))
         }
         for (hex, tile) in board.tiles where tileSprites[hex] == nil {
             let sprite = SKSpriteNode(texture: texture(for: tile.edges, in: view), size: geometry.tileSize)
@@ -322,18 +342,112 @@ final class ValleyScene: SKScene {
     }
 
     private func syncSlots(_ game: ValleyGame, in view: SKView) {
-        let open = game.isOver ? [] : game.board.openSlots
+        // No open spots while the glimpse's finished valley is on show.
+        let hidden = model?.coachStep == .glimpse
+        let open = game.isOver || hidden ? [] : game.board.openSlots
         for (hex, sprite) in slotSprites where !open.contains(hex) {
             slotSprites[hex] = nil
             sprite.run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
         }
+        // While the coach points at one spot, it pulses and the rest stay dim.
+        let spotlight = model?.coachSpot
         for hex in open {
             let sprite = slotSprites[hex] ?? makeSlot(at: hex, in: view)
+            sprite.removeAction(forKey: "fade")
+            if let spotlight {
+                if hex == spotlight {
+                    let pulse = SKAction.repeatForever(.sequence([
+                        .fadeAlpha(to: 0.9, duration: 0.45),
+                        .fadeAlpha(to: 0.35, duration: 0.45),
+                    ]))
+                    // With Reduce Motion, the spot just shines.
+                    sprite.run(UIAccessibility.isReduceMotionEnabled ? .fadeAlpha(to: 0.9, duration: 0.2) : pulse, withKey: "fade")
+                } else {
+                    sprite.run(.fadeAlpha(to: 0.12, duration: 0.2), withKey: "fade")
+                }
+                continue
+            }
             // Brighter where the current tile fits in some rotation.
             let fits = game.current.map { game.board.bestRotation(for: $0, at: hex) != nil } ?? false
-            sprite.removeAction(forKey: "fade")
             sprite.run(.fadeAlpha(to: fits ? 0.5 : 0.12, duration: 0.2), withKey: "fade")
         }
+    }
+
+    /// A tap somewhere else: the spot the coach points at gives a little pop.
+    func nudgeSpotlight() {
+        guard let spot = model?.coachSpot, let sprite = slotSprites[spot] else { return }
+        sprite.run(.sequence([.scale(to: 1.15, duration: 0.1), .scale(to: 1, duration: 0.15)]), withKey: "nudge")
+    }
+
+    /// The coach's pointing hand on the board, bobbing at the spot to tap or the ghost to turn.
+    private func syncCoachHand(_ model: GameModel, in view: SKView) {
+        guard let hex = model.coachHandHex else {
+            coachHand?.run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
+            coachHand = nil
+            return
+        }
+        let target = geometry.center(of: hex)
+        if let coachHand {
+            coachHand.run(.move(to: target, duration: 0.25), withKey: "move")
+            return
+        }
+        let config = UIImage.SymbolConfiguration(pointSize: geometry.radius * 0.95, weight: .regular)
+        guard let symbol = UIImage(systemName: "hand.point.up.left.fill", withConfiguration: config) else { return }
+        // SpriteKit ignores a symbol's tint, so draw it into a bitmap in each color.
+        func drawn(_ color: UIColor) -> SKTexture {
+            let image = UIGraphicsImageRenderer(size: symbol.size).image { _ in
+                symbol.withTintColor(color, renderingMode: .alwaysOriginal).draw(at: .zero)
+            }
+            return SKTexture(image: image)
+        }
+        let container = SKNode()
+        container.position = target
+        container.zPosition = 5
+        // The fingertip, at the symbol's top left, rests on the spot's center.
+        let shadow = SKSpriteNode(texture: drawn(.black))
+        shadow.anchorPoint = CGPoint(x: 0.1, y: 0.9)
+        shadow.alpha = 0.35
+        shadow.position = CGPoint(x: 2, y: -3)
+        let hand = SKSpriteNode(texture: drawn(.white))
+        hand.anchorPoint = CGPoint(x: 0.1, y: 0.9)
+        hand.zPosition = 1
+        let bob = SKNode()
+        bob.addChild(shadow)
+        bob.addChild(hand)
+        container.addChild(bob)
+        let push = SKAction.moveBy(x: -5, y: 6, duration: 0.45)
+        push.timingMode = .easeInEaseOut
+        if !UIAccessibility.isReduceMotionEnabled {
+            bob.run(.repeatForever(.sequence([push, push.reversed()])))
+        }
+        container.alpha = 0
+        container.run(.fadeIn(withDuration: 0.2))
+        effectLayer.addChild(container)
+        coachHand = container
+    }
+
+    /// The ghost shakes its head: this way round, the sides don't match.
+    func wiggleGhost() {
+        ghost?.run(.sequence([
+            .rotate(toAngle: 0.07, duration: 0.06),
+            .rotate(toAngle: -0.07, duration: 0.1),
+            .rotate(toAngle: 0.035, duration: 0.08),
+            .rotate(toAngle: 0, duration: 0.08),
+        ]), withKey: "wiggle")
+    }
+
+    /// The on-screen rectangle, in view points, around `hexes`.
+    func screenRect(of hexes: some Collection<Hex>) -> CGRect? {
+        guard view != nil else { return nil }
+        let centers = hexes.map { geometry.center(of: $0) }
+        guard let minX = centers.map(\.x).min(), let maxX = centers.map(\.x).max(),
+              let minY = centers.map(\.y).min(), let maxY = centers.map(\.y).max() else { return nil }
+        let halfWidth = geometry.tileSize.width / 2
+        let halfHeight = geometry.tileSize.height / 2
+        let corner = convertPoint(toView: CGPoint(x: minX - halfWidth, y: maxY + halfHeight))
+        let opposite = convertPoint(toView: CGPoint(x: maxX + halfWidth, y: minY - halfHeight))
+        return CGRect(x: min(corner.x, opposite.x), y: min(corner.y, opposite.y),
+                      width: abs(opposite.x - corner.x), height: abs(opposite.y - corner.y))
     }
 
     private func makeSlot(at hex: Hex, in view: SKView) -> SKSpriteNode {
@@ -356,8 +470,14 @@ final class ValleyScene: SKScene {
         let active = showing ? Dictionary(uniqueKeysWithValues: game.activeQuests.map { ($0.id, $0) }) : [:]
         for (id, badge) in badges where active[id] == nil {
             badges[id] = nil
-            let completed = placement?.completedQuests.contains { $0.id == id } ?? false
-            badge.dismiss(completed: completed)
+            // Only a quest that just ended gets its check or cross; a badge merely hidden fades away.
+            if placement?.completedQuests.contains(where: { $0.id == id }) == true {
+                badge.dismiss(.done)
+            } else if placement?.failedQuests.contains(where: { $0.id == id }) == true {
+                badge.dismiss(.closed)
+            } else {
+                badge.dismiss(.quiet)
+            }
         }
         for quest in active.values {
             if let badge = badges[quest.id] {
@@ -501,6 +621,11 @@ final class ValleyScene: SKScene {
 
     @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
         guard let view = recognizer.view else { return }
+        // The glimpse holds the camera still; the drag is dropped, not saved up for later.
+        guard model?.coachStep != .glimpse else {
+            recognizer.setTranslation(.zero, in: view)
+            return
+        }
         let translation = recognizer.translation(in: view)
         cameraNode.position.x -= translation.x * cameraNode.xScale
         cameraNode.position.y += translation.y * cameraNode.yScale
@@ -510,6 +635,10 @@ final class ValleyScene: SKScene {
     /// Zooms around the point between the fingers, so what's under them stays put.
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
         guard let view = recognizer.view else { return }
+        guard model?.coachStep != .glimpse else {
+            recognizer.scale = 1
+            return
+        }
         let fingers = recognizer.location(in: view)
         let before = convertPoint(fromView: fingers)
         let scale = cameraNode.xScale / recognizer.scale
@@ -659,8 +788,22 @@ private final class QuestBadge: SKNode {
         run(.sequence([.scale(to: 1.25, duration: 0.1), .scale(to: 1, duration: 0.12)]))
     }
 
-    /// Marks the quest done (green, check) or closed off (red, cross) with a pop, holds a moment, then leaves.
-    func dismiss(completed: Bool) {
+    enum Ending {
+        /// The quest was completed: green, a check.
+        case done
+        /// Its region closed off: red, a cross.
+        case closed
+        /// It's just going off screen (a new valley, the valley on view).
+        case quiet
+    }
+
+    /// Marks the quest done or closed off with a pop, holds a moment, then leaves; a quiet one just fades.
+    func dismiss(_ ending: Ending) {
+        guard ending != .quiet else {
+            run(.sequence([.group([.scale(to: 0.6, duration: 0.2), .fadeOut(withDuration: 0.2)]), .removeFromParent()]))
+            return
+        }
+        let completed = ending == .done
         disc.fillColor = completed ? Palette.questDone : Palette.questClosed
         label.text = completed ? "✓" : "✕"
         let mark = SKAction.sequence([.scale(to: 1.3, duration: 0.12), .scale(to: 1, duration: 0.12), .wait(forDuration: 0.5)])
