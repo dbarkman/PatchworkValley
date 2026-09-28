@@ -85,6 +85,12 @@ final class ValleyScene: SKScene {
         }
     }
 
+    /// Where a hex's center sits on screen, in the view's points.
+    func screenPoint(of hex: Hex) -> CGPoint? {
+        guard view != nil else { return nil }
+        return convertPoint(toView: geometry.center(of: hex))
+    }
+
     func recenter() {
         cameraNode.run(.group([
             .move(to: .zero, duration: 0.35),
@@ -416,9 +422,8 @@ final class ValleyScene: SKScene {
     private func playEffects(for placement: PlacementResult, board: Board, in view: SKView) {
         let center = geometry.center(of: placement.hex)
         let above = CGPoint(x: center.x, y: center.y + geometry.radius * 0.4)
-        if model?.mode == .coins {
-            if placement.coins > 0 { floatText("+\(placement.coins)", at: above, color: Palette.coin) }
-        } else if placement.points > 0 {
+        // Coin mode's coins fly from the tile to the coin chip instead (see `CoinFlightLayer`).
+        if model?.mode != .coins, placement.points > 0 {
             floatText("+\(placement.points)", at: above, color: .white)
         }
         for quest in placement.completedQuests {

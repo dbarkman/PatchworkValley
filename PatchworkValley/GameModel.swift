@@ -41,6 +41,8 @@ struct UndoPoint {
     let game: ValleyGame
     /// Coins that placement earned, which Undo takes back.
     let coins: Int
+    /// The coin flight that placement sent, which Undo stops mid-air.
+    var flightID: Int?
 }
 
 /// Short feedback shown over the board after a notable placement.
@@ -50,10 +52,24 @@ struct Toast: Equatable {
     let symbolName: String
 }
 
-/// A brief "+N" on a counter when a placement earns tiles or coins.
+/// A brief "+N" on a counter when a placement earns tiles or coins, or "−N" when coins are spent.
 struct Gain: Equatable {
     let id: Int
     let amount: Int
+}
+
+/// Coins on their way from a placed tile to the coin chip, one per coin earned. `from` is in view points;
+/// they land wherever the chip's coin icon is by then.
+struct CoinFlight: Equatable, Identifiable {
+    let id: Int
+    let count: Int
+    let from: CGPoint
+
+    /// Seconds each coin takes to reach the chip.
+    static let travel = 0.6
+
+    /// Seconds between coins leaving, so a big payout pours in over under a second.
+    var stagger: Double { min(0.05, 0.8 / Double(max(count, 1))) }
 }
 
 /// Owns both modes' runs and the player's in-progress choice. Views read it; the
@@ -83,7 +99,20 @@ final class GameModel {
     private(set) var rotationTurns = 0
     private(set) var toast: Toast?
     private(set) var tileGain: Gain?
-    private(set) var coinGain: Gain?
+    /// "+N" rising from the coin chip as earned coins land, or "−N" falling from it when coins are spent.
+    private(set) var coinChange: Gain?
+    /// The total the coin chip shows. It catches up with the wallet as flying coins land.
+    private(set) var walletShown: Int
+    private(set) var coinFlights: [CoinFlight] = []
+    /// Counts coins landing on the chip, so it can pop with each one.
+    private(set) var coinLandings = 0
+    /// Where flying coins land: the coin icon on the chip, in view points, kept current as the chip moves.
+    private(set) var coinTarget = CGPoint.zero
+    /// Coins earned but still in the air. The chip shows the wallet less these.
+    @ObservationIgnored private var coinsInFlight = 0
+    /// Each flight's landing task and how many of its coins are still in the air.
+    @ObservationIgnored private var flightTasks: [Int: Task<Void, Never>] = [:]
+    @ObservationIgnored private var flightRemaining: [Int: Int] = [:]
     /// Quests that just ended, kept on their chips for a moment to show how they ended.
     private(set) var endedQuestIDs: Set<Int> = []
     /// Looking over a finished valley, card put away, every mountain and lake in view.
@@ -124,7 +153,9 @@ final class GameModel {
         let level = min(max(1, defaults.integer(forKey: Key.level)), LevelDesigner.levelCount + 1)
         mode = GameMode(rawValue: defaults.string(forKey: Key.mode) ?? "") ?? .coins
         self.valley = valley
-        wallet = defaults.object(forKey: Key.wallet) == nil ? CoinEconomy.startingWallet : defaults.integer(forKey: Key.wallet)
+        let wallet = defaults.object(forKey: Key.wallet) == nil ? CoinEconomy.startingWallet : defaults.integer(forKey: Key.wallet)
+        self.wallet = wallet
+        walletShown = wallet
         coinGame = Self.makeCoinGame(valley: valley)
         self.level = level
         zenBest = defaults.integer(forKey: Key.zenBest)
@@ -232,15 +263,15 @@ final class GameModel {
         showQuestEndings(result.completedQuests + result.failedQuests)
         if mode == .coins {
             undoPoint = UndoPoint(game: before, coins: result.coins)
-            if result.coins > 0 {
-                addCoins(result.coins)
-                showCoinGain(result.coins)
-            }
+            var earned = result.coins
+            addCoins(result.coins)
             // Bank a finished valley right away, so quitting on the end card never loses it.
             if !before.hasFinishedStack && game.hasFinishedStack {
                 addCoins(CoinEconomy.valleyBonus)
+                earned += CoinEconomy.valleyBonus
                 defaults.set(valley + 1, forKey: Key.valley)
             }
+            if earned > 0 { undoPoint?.flightID = flyCoins(earned, from: result.hex) }
         }
         if mode == .levels, game.outcome == .won { defaults.set(level + 1, forKey: Key.level) }
         if mode == .zen, game.outcome == .outOfTiles { recordZenScore() }
@@ -274,7 +305,7 @@ final class GameModel {
         }
         guard game.canContinue else { return }
         if mode == .coins {
-            addCoins(-CoinEconomy.continuePrice)
+            spend(CoinEconomy.continuePrice)
             undoPoint = nil
             // The valley isn't finished any more: the fog comes back, and the longer valley can be saved again.
             resetValleyViewing()
@@ -396,11 +427,17 @@ final class GameModel {
             haptics.warn()
             return
         }
+        // Undo also takes back the coins the placement earned. Coins still in the air never land,
+        // so the chip's "−N" is the price plus only the coins that already reached it.
+        var takenBack = 0
+        var shownTakenBack = 0
         switch powerUp {
         case .undo:
             guard let undoPoint else { return }
             coinGame = undoPoint.game
-            addCoins(-undoPoint.coins)
+            takenBack = undoPoint.coins
+            let stillFlying = undoPoint.flightID.map(stopFlight) ?? 0
+            shownTakenBack = takenBack - stillFlying
         case .swap:
             coinGame.swapCurrent()
         case .wildcard:
@@ -416,7 +453,7 @@ final class GameModel {
             coinGame.lightCrater()
             show("Lantern lit until your next tile", symbol: powerUp.symbolName)
         }
-        addCoins(-powerUp.price)
+        spend(powerUp.price + takenBack, shown: powerUp.price + shownTakenBack)
         undoPoint = nil
         resetSelection()
         haptics.success()
@@ -433,7 +470,7 @@ final class GameModel {
             haptics.warn()
             return
         }
-        addCoins(-PowerUp.dynamite.price)
+        spend(PowerUp.dynamite.price)
         isAimingDynamite = false
         undoPoint = nil
         haptics.success()
@@ -449,6 +486,7 @@ final class GameModel {
         mode = .coins
         valley = 1
         wallet = CoinEconomy.startingWallet
+        stopAllFlights()
         coinGame = Self.makeCoinGame(valley: 1)
         isShowingValleyIntro = true
         resetValleyViewing()
@@ -512,6 +550,78 @@ final class GameModel {
         defaults.set(wallet, forKey: Key.wallet)
     }
 
+    /// Takes coins out of the wallet; a red "−N" drops out of the chip as its total rolls down.
+    /// `shown` is how far the chip's total drops, when that differs from what the wallet loses.
+    private func spend(_ amount: Int, shown: Int? = nil) {
+        addCoins(-amount)
+        syncWalletShown()
+        showCoinChange(-(shown ?? amount))
+    }
+
+    /// The chip's total: the wallet less the coins still in the air.
+    private func syncWalletShown() {
+        walletShown = max(0, wallet - coinsInFlight)
+    }
+
+    /// Records where the chip's coin icon sits, so flying coins land on it.
+    func coinChipMoved(to point: CGPoint) {
+        coinTarget = point
+    }
+
+    /// Sends one coin per coin earned from the placed tile to the chip. The chip's total
+    /// counts up as they land, and "+N" rises into it. Returns the flight's id.
+    private func flyCoins(_ amount: Int, from hex: Hex) -> Int {
+        feedbackCount += 1
+        let flight = CoinFlight(id: feedbackCount, count: amount, from: scene.screenPoint(of: hex) ?? coinTarget)
+        coinFlights.append(flight)
+        coinsInFlight += amount
+        flightRemaining[flight.id] = amount
+        syncWalletShown()
+        flightTasks[flight.id] = Task {
+            try? await Task.sleep(for: .seconds(CoinFlight.travel))
+            guard !Task.isCancelled else { return }
+            showCoinChange(amount)
+            for _ in 1...amount {
+                guard !Task.isCancelled, let remaining = flightRemaining[flight.id], remaining > 0 else { return }
+                flightRemaining[flight.id] = remaining - 1
+                coinsInFlight -= 1
+                syncWalletShown()
+                coinLandings += 1
+                try? await Task.sleep(for: .seconds(flight.stagger))
+            }
+            guard !Task.isCancelled else { return }
+            finishFlight(flight.id)
+        }
+        return flight.id
+    }
+
+    /// Stops a flight mid-air: its coins vanish and never reach the chip. Returns how many were still flying.
+    @discardableResult
+    private func stopFlight(_ id: Int) -> Int {
+        flightTasks[id]?.cancel()
+        let remaining = flightRemaining[id] ?? 0
+        coinsInFlight -= remaining
+        finishFlight(id)
+        return remaining
+    }
+
+    private func finishFlight(_ id: Int) {
+        flightTasks[id] = nil
+        flightRemaining[id] = nil
+        coinFlights.removeAll { $0.id == id }
+        syncWalletShown()
+    }
+
+    /// Stops every flight; the chip shows the whole wallet at once.
+    private func stopAllFlights() {
+        flightTasks.values.forEach { $0.cancel() }
+        flightTasks = [:]
+        flightRemaining = [:]
+        coinFlights = []
+        coinsInFlight = 0
+        syncWalletShown()
+    }
+
     // MARK: - Modes and levels
 
     func switchMode(to newMode: GameMode) {
@@ -566,6 +676,8 @@ final class GameModel {
     #if DEBUG
     func debugAddCoins(_ amount: Int) {
         addCoins(amount)
+        syncWalletShown()
+        showCoinChange(amount)
     }
 
     func debugJumpValley(to number: Int) {
@@ -626,7 +738,8 @@ final class GameModel {
     private func clearFeedback() {
         toast = nil
         tileGain = nil
-        coinGain = nil
+        coinChange = nil
+        stopAllFlights()
         endedQuestIDs = []
     }
 
@@ -706,13 +819,13 @@ final class GameModel {
         }
     }
 
-    private func showCoinGain(_ amount: Int) {
+    private func showCoinChange(_ amount: Int) {
         feedbackCount += 1
-        let gain = Gain(id: feedbackCount, amount: amount)
-        coinGain = gain
+        let change = Gain(id: feedbackCount, amount: amount)
+        coinChange = change
         Task {
-            try? await Task.sleep(for: .seconds(1.4))
-            if self.coinGain?.id == gain.id { self.coinGain = nil }
+            try? await Task.sleep(for: .seconds(1.2))
+            if self.coinChange?.id == change.id { self.coinChange = nil }
         }
     }
 }

@@ -47,12 +47,94 @@ struct GameView: View {
             }
             .padding(.horizontal)
             .padding(.bottom, 8)
+
+            CoinFlightLayer(flights: model.coinFlights, target: model.coinTarget)
         }
         .animation(.snappy, value: model.overlay)
         .animation(.snappy, value: model.toast)
         .animation(.snappy, value: model.mode)
         .animation(.snappy, value: model.isAimingDynamite)
         .animation(.snappy, value: model.isViewingValley)
+    }
+}
+
+/// Coins streaming from a placed tile up to the coin chip, over everything else.
+private struct CoinFlightLayer: View {
+    let flights: [CoinFlight]
+    /// The chip's coin icon, where coins land, as it is now.
+    let target: CGPoint
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if !reduceMotion {
+                ForEach(flights) { flight in
+                    ForEach(0..<flight.count, id: \.self) { index in
+                        FlyingCoin(flight: flight, index: index, target: target)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// One coin of a flight: it pops off the tile a little to the side, arcs up to the chip, and shrinks as it lands.
+private struct FlyingCoin: View {
+    let flight: CoinFlight
+    let index: Int
+    let target: CGPoint
+    @State private var progress: CGFloat = 0
+    @ScaledMetric(relativeTo: .headline) private var size: CGFloat = 20
+
+    var body: some View {
+        Image(systemName: "centsign.circle.fill")
+            .font(.system(size: size))
+            .foregroundStyle(Color(red: 0.45, green: 0.33, blue: 0.0), .yellow)
+            .shadow(color: .black.opacity(0.35), radius: 1.5, y: 1)
+            .modifier(CoinPath(progress: progress, from: start, to: target))
+            .onAppear {
+                withAnimation(.easeIn(duration: CoinFlight.travel).delay(Double(index) * flight.stagger)) {
+                    progress = 1
+                }
+            }
+    }
+
+    /// Coins leave from a little ring around the tile's center, each at its own angle.
+    private var start: CGPoint {
+        let angle = Double(index) * 2.4
+        let reach = size * 0.8
+        return CGPoint(x: flight.from.x + cos(angle) * reach, y: flight.from.y + sin(angle) * reach)
+    }
+}
+
+/// Moves a coin along a curve from `from` to `to` as `progress` goes from 0 to 1. Hidden until it sets off.
+private struct CoinPath: ViewModifier, Animatable {
+    var progress: CGFloat
+    let from: CGPoint
+    let to: CGPoint
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        // Rise first, then swing across to the chip.
+        let control = CGPoint(x: from.x + (to.x - from.x) * 0.15, y: to.y + (from.y - to.y) * 0.25)
+        let t = progress
+        let point = CGPoint(
+            x: (1 - t) * (1 - t) * from.x + 2 * (1 - t) * t * control.x + t * t * to.x,
+            y: (1 - t) * (1 - t) * from.y + 2 * (1 - t) * t * control.y + t * t * to.y
+        )
+        return content
+            .scaleEffect(1 - 0.35 * t)
+            // Hidden until it sets off, and melting into the chip over the last stretch.
+            .opacity(t == 0 ? 0 : min(1, (1 - t) * 8))
+            .position(point)
     }
 }
 
@@ -266,30 +348,68 @@ private struct CoinsChip: View {
 
     var body: some View {
         Label {
-            Text(model.wallet, format: .number)
+            Text(model.walletShown, format: .number)
                 .monospacedDigit()
-                .contentTransition(.numericText(value: Double(model.wallet)))
+                .contentTransition(.numericText(value: Double(model.walletShown)))
         } icon: {
-            Image(systemName: "centsign.circle.fill").foregroundStyle(.yellow)
+            Image(systemName: "centsign.circle.fill")
+                .foregroundStyle(.yellow)
+                // Flying coins land on this icon.
+                .onGeometryChange(for: CGPoint.self) { proxy in
+                    let frame = proxy.frame(in: .global)
+                    return CGPoint(x: frame.midX, y: frame.midY)
+                } action: { model.coinChipMoved(to: $0) }
         }
         .font(.headline)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())
-        .overlay(alignment: .bottom) {
-            if let gain = model.coinGain {
-                Text("+\(gain.amount)")
-                    .font(.headline.bold())
-                    .foregroundStyle(.yellow)
-                    .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
-                    .alignmentGuide(.bottom) { $0[.top] - 4 }
-                    .id(gain.id)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+        // A small pop as each coin lands.
+        .keyframeAnimator(initialValue: 1.0, trigger: model.coinLandings) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(1.08, duration: 0.05)
+                CubicKeyframe(1.0, duration: 0.1)
             }
         }
-        .animation(.snappy, value: model.wallet)
-        .animation(.snappy, value: model.coinGain)
+        // Earned coins rise from just below the chip into its total (the Dynamic Island sits above it);
+        // spent ones fall out of the bottom.
+        .overlay(alignment: .bottom) {
+            if let change = model.coinChange {
+                CoinChangeText(amount: change.amount)
+                    .alignmentGuide(.bottom) { $0[.top] }
+                    .id(change.id)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy, value: model.walletShown)
+        .animation(.snappy, value: model.coinChange)
         .accessibilityLabel("\(model.wallet) coins")
+    }
+}
+
+/// "+N" in gold drifting up into the coin chip from just below it, or "−N" in red falling out of it,
+/// fading as it goes.
+private struct CoinChangeText: View {
+    let amount: Int
+    @State private var isGone = false
+    @ScaledMetric(relativeTo: .headline) private var drift: CGFloat = 26
+
+    var body: some View {
+        Text(amount > 0 ? "+\(amount)" : "−\(-amount)")
+            .font(.headline.bold())
+            .foregroundStyle(amount > 0 ? Color.yellow : Color.red)
+            .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+            .fixedSize()
+            // A gain starts a drift below the chip and rises toward it; a spend starts at the chip and falls.
+            .offset(y: amount > 0 ? (isGone ? 0 : drift) : (isGone ? drift : 0))
+            .opacity(isGone ? 0 : 1)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1)) { isGone = true }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -679,7 +799,7 @@ private struct OverlayCard: View {
             .font(.title2.bold())
         Label("\(model.game.coins) coins earned", systemImage: "centsign.circle.fill")
             .font(.title3.weight(.semibold))
-        Text("+\(CoinEconomy.valleyBonus) finishing bonus added")
+        Text("Plus a \(CoinEconomy.valleyBonus)-coin finishing bonus")
             .foregroundStyle(.secondary)
         // Quests the valley ends without; +3 tiles is offered when one is within three tiles.
         let unfinished = model.game.unfinishedQuests
