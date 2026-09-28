@@ -1,3 +1,5 @@
+import Dispatch
+import Synchronization
 import Testing
 @testable import ValleyCore
 
@@ -21,20 +23,39 @@ func findLevelSeeds() {
 
 /// A design tool, not a check: enable it to find the tutorial valley's seed, the first whose
 /// opening meets every `Tutorial.Requirement`, then copy the printed seed into `Tutorial.seed`
-/// and the printed spots into `TutorialTests`. Few seeds qualify (the first is past 120,000),
-/// so it takes a few minutes.
+/// and the printed spots and coins into `TutorialTests`. Very few seeds qualify (the first is past
+/// 1,100,000), so it searches millions, a block at a time across every core, and prints its progress
+/// after each block. A release build is quickest, about a minute:
+/// `swift test -c release -Xswiftc -enable-testing --filter findTutorialSeed`.
 @Test(.disabled("Design tool: run by hand to pick the tutorial's seed"))
 func findTutorialSeed() {
-    let attempts: UInt64 = 500_000
+    let attempts: UInt64 = 50_000_000
+    let block: UInt64 = 100_000
     var nearest: (seed: UInt64, met: Int)?
-    for seed in 1...attempts {
-        let audit = Tutorial.audit(seed: seed, stopAtFirst: true)
-        if audit.passes {
-            let spots = Tutorial.Step.allCases.compactMap { step in audit.spots[step].map { "\(step) \($0)" } }
-            print("Tutorial: seed \(seed) (searched 1...\(seed)); spots \(spots.joined(separator: ", "))")
+    var start: UInt64 = 1
+    while start <= attempts {
+        let first = start
+        let count = min(block, attempts - first + 1)
+        // A block is searched in parallel; the lowest passing seed of the first block with one wins.
+        let results = Mutex<[(seed: UInt64, audit: Tutorial.Audit)]>([])
+        DispatchQueue.concurrentPerform(iterations: Int(count)) { index in
+            let seed = first + UInt64(index)
+            let audit = Tutorial.audit(seed: seed, stopAtFirst: true)
+            if audit.met.count > 1 { results.withLock { $0.append((seed, audit)) } }
+        }
+        let found = results.withLock { $0 }.sorted { $0.seed < $1.seed }
+        if let pass = found.first(where: { $0.audit.passes }) {
+            let spots = Tutorial.Step.allCases.compactMap { step in
+                pass.audit.spots[step].map { "\(step) \($0) (\(pass.audit.coins[step] ?? 0) coins)" }
+            }
+            print("Tutorial: seed \(pass.seed) (searched 1...\(pass.seed)); spots \(spots.joined(separator: ", "))")
             return
         }
-        if audit.met.count > (nearest?.met ?? -1) { nearest = (seed, audit.met.count) }
+        for candidate in found where candidate.audit.met.count > (nearest?.met ?? -1) {
+            nearest = (candidate.seed, candidate.audit.met.count)
+        }
+        start += count
+        print("Tutorial: searched 1...\(start - 1); closest so far \(nearest.map { "seed \($0.seed), \($0.met) met" } ?? "none")")
     }
     print("Tutorial: no seed in 1...\(attempts) meets every requirement; closest is \(nearest.map { "seed \($0.seed), \($0.met) met" } ?? "none")")
 }

@@ -99,11 +99,12 @@ Coin mode builds the habit: players earn coins that get them a little further ea
 A new player on valley 1 is coached through the first tiles instead of reading rules; players past valley 1 never see it. It takes about 45 seconds, and **Skip** is always there.
 
 - **Glimpse (about 10 seconds, at least 2 per beat):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog (2.5 s); the fog lifts (2.5 s, "Build a valley like this, one tile at a time."), a white photo frame drops around it (3 s, "Finish it, and keep the picture."), then it folds away a ring at a time to the single starting tile (2 s). Taps on the board don't cut it short; Skip does.
-- **Four coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 120854), with dots showing the four steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place.
+- **Five coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 1106390), with dots showing the five steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place. The valley opens with no quest going; the second tile carries one.
   1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches, and Place wears a ring and the hand. One coin flies in.
-  2. *Turn:* Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins.
-  3. *Quest:* the quest chip and badge appear ("Quest: add 1 more field tile here for bonus coins."); one spot glows with no hand, and it finishes the quest.
-  4. *Choice:* Next appears; every fitting spot glows ("Your turn. Put it anywhere that glows.").
+  2. *Quest tile:* the tile carries a forest quest of 3. Its spot keeps its forest side apart from any other forest, so the quest asks for the 3 on its tag (2 more tiles). It matches two sides for two coins.
+  3. *Turn:* Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins and grows the forest to 2 of 3.
+  4. *Finish the quest:* an all-forest tile finishes the quest: 1 coin for its match and 11 for the quest.
+  5. *Choice:* Next appears; every fitting spot glows ("Your turn. Put it anywhere that glows."). The fifth tile fits in 6 spots, and wherever it goes, the valley can be finished with or without swapping the sixth tile.
 - **Hand-off:** the menu, tiles left, fit and the power-ups slide in: "20 tiles to go. Can you find 2 hidden lakes?" with **Let's go** (or tap any spot).
 - A tap anywhere but the coached spot shakes the line and pops the spot. "New quest" toasts stay quiet until the hand-off.
 - **One-time tips** afterwards, each gone with the next action: a tile that fits 2 spots or fewer rings Swap ("Tricky tile? Your coins can Swap it for another."); the first out-of-room card adds "It happens! A power-up can rescue this tile."; the first finished valley rings View valley ("Lift the fog and see what you built."); the first look over it rings Save.
