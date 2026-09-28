@@ -70,7 +70,7 @@ enum Tip: String, CaseIterable {
 
     var line: String {
         switch self {
-        case .swap: "Tricky tile? Your coins can Swap it for another."
+        case .swap: "Tricky tile? Spend rewards to Swap it for another."
         case .noRoom: "It happens! A power-up can rescue this tile."
         case .viewValley: "Lift the fog and see what you built."
         case .save: "Save it to keep the picture."
@@ -113,19 +113,17 @@ struct CoachBubble: View {
                     }
                     Spacer(minLength: 0)
                     if let onSkip {
-                        Button(action: onSkip) {
-                            Text("Skip").lineLimit(1).minimumScaleFactor(0.6)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        Button("Skip", action: onSkip)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                     }
                     if let onGo {
-                        Button(action: onGo) {
-                            Text(goTitle).lineLimit(1).minimumScaleFactor(0.6)
-                        }
-                        .buttonStyle(.borderedProminent)
+                        Button(goTitle, action: onGo)
+                            .buttonStyle(.borderedProminent)
                     }
                 }
+                // The buttons stop growing at the first accessibility size, so "Next" never breaks mid-word.
+                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -322,6 +320,9 @@ struct PowerUpShowcase: View {
     /// main thread, where a main-actor ForEach closure would trap.
     private var card: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Power-ups")
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
             row(0)
             row(1)
             row(2)

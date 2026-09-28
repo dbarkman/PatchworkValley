@@ -23,6 +23,9 @@ final class ValleyScene: SKScene {
     private var rimTexture: SKTexture?
     private var lakeTexture: SKTexture?
     private var slotSprites: [Hex: SKSpriteNode] = [:]
+    /// Open spots where the tile fits, glowing softly together in Coin mode (see `update`).
+    private var glowingSlots: Set<Hex> = []
+    private var lastFrameTime: TimeInterval = 0
     private var badges: [Int: QuestBadge] = [:]
     private var tileTextures: [[Terrain]: SKTexture] = [:]
     private var slotTexture: SKTexture?
@@ -355,6 +358,7 @@ final class ValleyScene: SKScene {
         let open = game.isOver || hidden ? [] : game.board.openSlots
         for (hex, sprite) in slotSprites where !open.contains(hex) {
             slotSprites[hex] = nil
+            glowingSlots.remove(hex)
             sprite.run(.sequence([.fadeOut(withDuration: 0.15), .removeFromParent()]))
         }
         // While the coach points at one spot, it pulses and the rest stay dim.
@@ -363,6 +367,7 @@ final class ValleyScene: SKScene {
             let sprite = slotSprites[hex] ?? makeSlot(at: hex, in: view)
             sprite.removeAction(forKey: "fade")
             if let spotlight {
+                glowingSlots.remove(hex)
                 if hex == spotlight {
                     let pulse = SKAction.repeatForever(.sequence([
                         .fadeAlpha(to: 0.9, duration: 0.45),
@@ -375,9 +380,29 @@ final class ValleyScene: SKScene {
                 }
                 continue
             }
-            // Brighter where the current tile fits in some rotation.
+            // Brighter where the current tile fits in some rotation. In Coin mode those spots also
+            // glow softly, gentler than the coach's spotlight (still, with Reduce Motion).
             let fits = game.current.map { game.board.bestRotation(for: $0, at: hex) != nil } ?? false
-            sprite.run(.fadeAlpha(to: fits ? 0.5 : 0.12, duration: 0.2), withKey: "fade")
+            if fits && model?.mode == .coins && !UIAccessibility.isReduceMotionEnabled {
+                glowingSlots.insert(hex)
+            } else {
+                glowingSlots.remove(hex)
+                sprite.run(.fadeAlpha(to: fits ? 0.5 : 0.12, duration: 0.2), withKey: "fade")
+            }
+        }
+    }
+
+    override func update(_ currentTime: TimeInterval) {
+        let elapsed = lastFrameTime == 0 ? 0 : min(currentTime - lastFrameTime, 0.1)
+        lastFrameTime = currentTime
+        guard !glowingSlots.isEmpty else { return }
+        // One slow breath shared by every glowing spot, so they rise and fall together; each
+        // eases toward it, so a spot that just appeared or just started glowing never snaps.
+        let breath = CGFloat(0.46 + 0.14 * sin(currentTime * 2 * .pi / 2.4))
+        let ease = CGFloat(min(1, elapsed * 6))
+        for hex in glowingSlots {
+            guard let sprite = slotSprites[hex] else { continue }
+            sprite.alpha += (breath - sprite.alpha) * ease
         }
     }
 
@@ -550,20 +575,12 @@ final class ValleyScene: SKScene {
     private func playEffects(for placement: PlacementResult, board: Board, in view: SKView) {
         let center = geometry.center(of: placement.hex)
         let above = CGPoint(x: center.x, y: center.y + geometry.radius * 0.4)
-        // Coin mode's coins fly from the tile to the coin chip instead (see `CoinFlightLayer`); the
-        // intro's coins just float up, since they never reach the wallet.
-        if model?.isInIntro == true, placement.coins > 0 {
-            floatText("+\(placement.coins)", at: above, color: Palette.coin)
-        } else if model?.mode != .coins, placement.points > 0 {
+        // Coin mode's coins fly from the tile to the coin chip instead (see `CoinFlightLayer`).
+        if model?.mode != .coins, placement.points > 0 {
             floatText("+\(placement.points)", at: above, color: .white)
         }
         for quest in placement.completedQuests {
             flash(board.region(of: quest.terrain, from: quest.anchor), from: quest.anchor, in: view)
-            // The intro's quest pays out in a shower of coins, since its coins never fly to a chip.
-            if model?.isInIntro == true {
-                puff(at: center, color: Palette.coin, count: 16, reach: 1.8)
-                puff(at: geometry.center(of: quest.anchor), color: Palette.coin, count: 10, reach: 1.2)
-            }
         }
         for goal in placement.metGoals {
             flash(board.largestRegion(of: goal.terrain), from: placement.hex, in: view)

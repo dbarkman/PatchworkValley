@@ -259,6 +259,7 @@ private struct TopBar: View {
                 }
                 if model.hud.tilesLeft {
                     TilesLeft(model: model)
+                        .coachMark(model.coachMarksTilesLeft)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -385,7 +386,7 @@ private struct GameMenu: View {
             case .restart:
                 Text("This valley will be lost.")
             case .resetPlayer:
-                Text("Your coins, valley, level and best score go back to the start, as if the game were just installed.")
+                Text("Your rewards, valley, level and best score go back to the start, as if the game were just installed.")
             }
         }
     }
@@ -858,7 +859,7 @@ private struct OverlayCard: View {
             }
             .padding(.vertical, 4)
         } else {
-            Text("Quests pay coins. Spend them on power-ups.")
+            Text("Quests pay rewards. Spend them on power-ups.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
@@ -1200,7 +1201,7 @@ extension PowerUp {
 
     var blurb: String {
         switch self {
-        case .undo: "Take back your last tile, and the coins it earned."
+        case .undo: "Take back your last tile, and the rewards it earned."
         case .swap: "Trade the tile in your hand for a fresh one."
         case .wildcard: "Turn the tile in your hand into a patch that matches anything."
         case .dynamite: "Blast a mountain you can see, opening the ground beneath it."

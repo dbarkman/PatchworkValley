@@ -280,14 +280,14 @@ final class GameModel {
     func tap(_ hex: Hex) {
         // The glimpse plays out (Skip ends it); a tap at the hand-off lets the player go.
         if isInIntro { return }
-        if coachStep == .handOff { finishCoach() }
-        // While the coach wants a power-up (or Continue) tapped, the board only nudges.
-        if coachStep == .trySwap || isDemoWaitingOffBoard {
-            nudge()
-            return
-        }
+        // Aimed Dynamite takes the tap first (How to Play's hand-off leaves the power-ups usable).
         if isAimingDynamite {
             blast(hex)
+            return
+        }
+        // While the coach wants a button tapped (a power-up, Let's go!, Next or Continue), the board only nudges.
+        if coachStep == .trySwap || coachStep == .handOff || isDemoWaitingOffBoard {
+            nudge()
             return
         }
         guard overlay == nil, let tile = game.current else { return }
@@ -320,7 +320,7 @@ final class GameModel {
 
     func rotate() {
         guard overlay == nil, game.current != nil else { return }
-        if coachStep == .trySwap || isDemoWaitingOffBoard {
+        if coachStep == .trySwap || coachStep == .handOff || isDemoWaitingOffBoard {
             nudge()
             return
         }
@@ -344,7 +344,7 @@ final class GameModel {
             return
         }
         // Nothing to place while the coach wants a power-up or Continue tapped (Dynamite's demo places its own tile).
-        if coachStep == .trySwap || isDemoWaitingForButton {
+        if coachStep == .trySwap || coachStep == .handOff || isDemoWaitingForButton {
             nudge()
             return
         }
@@ -772,9 +772,10 @@ final class GameModel {
         var parts = HUDParts(menu: false, tilesLeft: false, fit: false, quests: false, rotate: false, next: false, powerUps: false)
         switch coachStep {
         case .intro(let page):
-            parts.topBar = false
+            // From page 2 the coin chip is up, for the intro's rewards to land on; the quest
+            // shows while the intro builds its little valley.
+            parts.topBar = page >= 1
             parts.tray = false
-            // The quest badge shows while the intro builds its little valley.
             parts.quests = page == 1 || page == 2 || page == 3
         case .tile(.place):
             break
@@ -827,11 +828,11 @@ final class GameModel {
             return isEndingIntro ? nil : Self.introLines[min(page, Self.introLines.count - 1)]
         case .tile(.place):
             if selectedSlot == nil { return "Tap the glowing spot." }
-            return isCoachedTileReady ? "Stitches mean the sides match, and each match pays a coin. Tap Place." : "Tap the tile to turn it."
+            return isCoachedTileReady ? "Stitches mean the sides match, and each match earns a reward. Tap Place." : "Tap the tile to turn it."
         case .tile(.questTile):
             if selectedSlot != nil { return isCoachedTileReady ? "Tap Place to start the quest." : "Tap the tile to turn it." }
             if let quest = game.current?.quest {
-                return "This tile has a quest. Its tag means: grow a \(quest.terrain.displayName.lowercased()) of \(quest.target) tiles. Tap the glowing spot."
+                return "This tile has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(quest.target) tiles. Tap the glowing spot."
             }
             return "Tap the glowing spot."
         case .tile(.turn):
@@ -848,24 +849,24 @@ final class GameModel {
                 let terrain = quest.terrain.displayName.lowercased()
                 let tiles = quest.remaining == 1 ? "tile" : "tiles"
                 let count = ["One", "Two", "Three"].indices.contains(quest.remaining - 1) ? ["One", "Two", "Three"][quest.remaining - 1] : "\(quest.remaining)"
-                return "The chip up top tracks the quest too. \(count) more \(terrain) \(tiles) \(quest.remaining == 1 ? "finishes" : "finish") it for bonus coins."
+                return "The chip up top tracks the quest too. \(count) more \(terrain) \(tiles) \(quest.remaining == 1 ? "finishes" : "finish") it for bonus rewards."
             }
-            return "Grow a quest's region to earn bonus coins."
+            return "Grow a quest's region to earn bonus rewards."
         case .tile(.choice):
-            return "Your turn. Put it anywhere that glows."
+            return "Your turn, tap any glowing spot."
         case .trySwap:
-            return "Matches and quests pay coins, and coins buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free."
+            return "Matches and quests pay rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free."
         case .handOff:
             if isReplayingCoach { return "That's the basics. Match sides, finish quests, and find what's hidden." }
             let lakes = game.rules.lakeCount
-            return "After this, Swap costs \(PowerUp.swap.price) coins. \(game.tilesLeft) tiles to go. Can you find \(lakes) hidden \(lakes == 1 ? "lake" : "lakes")?"
+            return "\(game.tilesLeft) tiles left to place. Can you find \(lakes) hidden \(lakes == 1 ? "lake" : "lakes")?"
         case .demo(let powerUp, let beat):
             return demoLine(powerUp, beat)
         }
     }
 
-    private func demoLine(_ powerUp: PowerUp, _ beat: DemoBeat) -> String {
-        let price = "After this, \(powerUp == .lantern ? "the Lantern" : powerUp.title) costs \(powerUp.price) coins."
+    /// A demo beat's line, or nil when the bubble steps aside (Undo and Wildcard end straight into the game).
+    private func demoLine(_ powerUp: PowerUp, _ beat: DemoBeat) -> String? {
         switch (powerUp, beat) {
         case (.undo, .place):
             return selectedSlot == nil ? "New power-up: Undo. First, tap the glowing spot." : "Tap Place."
@@ -878,17 +879,17 @@ final class GameModel {
         case (.dynamite, .autoPlace):
             return "Watch: a tile goes down, and a mountain comes out of the fog."
         case (.dynamite, .use):
-            return "Mountains inside the valley can be blasted away. Tap Dynamite. This one's free."
+            return "Mountains inside the valley can be blasted away, freeing the tile for use. Tap Dynamite. This one's free."
         case (.dynamite, .aim):
             return "Now tap the glowing mountain."
         case (.dynamite, .done):
-            return "Boom! Mountains on the valley's edge can't be blasted. \(price)"
+            return "Boom! Mountains on the valley's edge can't be blasted."
         case (.lantern, .use):
-            return "Mountains and lakes hide in the fog. The Lantern shows them all until your next tile. Tap Lantern. This one's free."
+            return "Mountains and lakes hide in the fog. The Lantern shows them all for one turn. Tap Lantern. This one's free."
         case (.lantern, .done):
-            return "There's everything the fog was hiding. \(price)"
+            return "There's everything the fog was hiding."
         case (_, .done):
-            return "That's \(powerUp.title). After this, it costs \(powerUp.price) coins."
+            return nil
         default:
             return "Tap the glowing spot."
         }
@@ -925,10 +926,10 @@ final class GameModel {
     /// The intro's words, one line per page.
     private static let introLines = [
         "A valley, lost in fog. Can you bring it back?",
-        "Stitch it back together, one patch at a time. Every matching side pays a coin.",
-        "Grow what the valley asks for. Each quest you finish pays a pile of coins.",
-        "Spend your coins on clever tricks.",
-        "Finish it, and it's yours to keep.",
+        "Stitch it back together, one patch at a time. Every matching side pays a reward.",
+        "Quests help grow your valley and earn a pile of rewards when finished.",
+        "Spend your rewards on helpful power-ups.",
+        "Finish a valley, then save and share.",
     ]
 
     /// Where the coach's hand points on the board, if anywhere: the spot to tap, the ghost to turn, or the mountain to blast.
@@ -975,6 +976,11 @@ final class GameModel {
         coachStep == .tile(.turn) && selectedSlot == nil && !isReplayingCoach
     }
 
+    /// The tiles-left chip wears a ring at the hand-off, which counts the tiles still to place.
+    var coachMarksTilesLeft: Bool {
+        coachStep == .handOff && !isReplayingCoach
+    }
+
     /// The coin chip wears a ring while the coach says what coins are for.
     var coachMarksCoins: Bool {
         coachStep == .trySwap
@@ -998,8 +1004,9 @@ final class GameModel {
     /// The bubble's button: "Let's go" at the hand-off, "Continue" when a demo is done.
     var coachGoTitle: String? {
         switch coachStep {
-        case .intro(let page): page < introPages - 1 ? "Next" : "Let's play"
-        case .handOff: "Let's go"
+        case .intro(let page): page < introPages - 1 ? "Next" : "Let's go!"
+        case .handOff: "Let's go!"
+        case .demo(.dynamite, .autoPlace): "Next"
         case .demo(_, .done): "Continue"
         default: nil
         }
@@ -1007,12 +1014,17 @@ final class GameModel {
 
     /// Skip is there whenever the bubble has no button of its own.
     var showsCoachSkip: Bool {
-        coachStep != nil && (coachGoTitle == nil || isInIntro)
+        switch coachStep {
+        case nil, .handOff, .demo(_, .done): false
+        case .intro: !isEndingIntro
+        default: true
+        }
     }
 
     func coachGo() {
         switch coachStep {
         case .intro: nextIntroPage()
+        case .demo(_, .autoPlace): placeDemoTile()
         case .demo: completeDemo()
         default: finishCoach()
         }
@@ -1020,7 +1032,8 @@ final class GameModel {
 
     /// A big coin payout is on its way to the chip; the coach's bubble steps aside.
     var isBigPayoutInFlight: Bool {
-        coinFlights.contains { $0.count >= 5 }
+        // The intro keeps its bubble (and Next) up while its quest pays out.
+        !isInIntro && coinFlights.contains { $0.count >= 5 }
     }
 
     /// Starts a new player's first run once the board is on screen.
@@ -1050,6 +1063,12 @@ final class GameModel {
         // Skipping the intro goes on to the coached tiles; they have their own Skip.
         if isInIntro {
             if !isEndingIntro { endIntro() }
+            return
+        }
+        // Skipping the Swap try still shows how many tiles are left.
+        if coachStep == .trySwap {
+            enterCoachStep(.handOff)
+            scene.sync()
             return
         }
         finishCoach()
@@ -1180,14 +1199,19 @@ final class GameModel {
         return true
     }
 
-    /// Places the intro's tile. Its coins float up from the board and never reach the wallet.
+    /// Places the intro's tile. Its rewards fly to the coin chip, as they do in play: a small welcome gift.
     private func placeIntroTile() {
         guard let slot = selectedSlot, let result = coinGame.placeCurrent(at: slot) else { return }
         resetSelection()
         result.completedQuests.isEmpty ? haptics.place() : haptics.success()
+        showQuestEndings(result.completedQuests + result.failedQuests)
         scene.sync(placement: result)
         // Keep the little valley centered as it grows.
         scene.fitValley()
+        if result.coins > 0 {
+            addCoins(result.coins)
+            _ = flyCoins(result.coins, from: result.hex)
+        }
     }
 
     /// Next was tapped before the page's tiles were all down: they go down now.
@@ -1319,19 +1343,19 @@ final class GameModel {
                 coachSpot = spot
                 coachTile = tile.rotatedClockwise(game.board.bestRotation(for: tile, at: spot) ?? 0)
             }
-        case .autoPlace:
-            demoToken += 1
-            let token = demoToken
-            // Long enough to read (or, with VoiceOver, to hear) the line first.
-            let wait = UIAccessibility.isVoiceOverRunning ? 5.0 : 2.0
-            Task {
-                try? await Task.sleep(for: .seconds(wait))
-                guard demoToken == token else { return }
-                placeDemoTile()
-            }
         case .aim:
             demoTarget = PowerUpDemo.target(for: powerUp, in: game)
-        case .use, .placeWild, .done:
+        case .done where powerUp == .undo || powerUp == .wildcard:
+            // No closing line: a moment to see the try land, then the real valley.
+            demoToken += 1
+            let token = demoToken
+            Task {
+                try? await Task.sleep(for: .seconds(1.2))
+                guard demoToken == token else { return }
+                completeDemo()
+            }
+        case .autoPlace, .use, .placeWild, .done:
+            // Dynamite's watch beat waits for Next (see `coachGo`).
             break
         }
     }
