@@ -25,9 +25,11 @@ struct GameView: View {
                 if model.hud.topBar {
                     TopBar(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { model.scene.hudTop = $0 }
+                        .layoutPriority(1)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                if model.isAimingDynamite {
+                // A demo's own bubble says what to tap.
+                if model.isAimingDynamite && model.demoPowerUp == nil {
                     AimingBanner(model: model)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
@@ -43,9 +45,16 @@ struct GameView: View {
                         line: line,
                         stepIndex: model.coachStepIndex,
                         nudges: model.coachNudges,
-                        onSkip: model.coachStep != nil && model.coachStep != .handOff ? { model.skipCoach() } : nil,
-                        onGo: model.coachStep == .handOff ? { model.finishCoach() } : nil
+                        onSkip: model.showsCoachSkip ? { model.skipCoach() } : nil,
+                        onGo: model.coachGoTitle != nil ? { model.coachGo() } : nil,
+                        goTitle: model.coachGoTitle ?? "Let's go"
                     )
+                    // The valley is framed above the bubble while it shows.
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: {
+                        model.scene.coachTop = $0
+                        model.fitValleyAboveCoachIfNeeded()
+                    }
+                    .onDisappear { model.scene.coachTop = 0 }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 if model.isViewingValley {
@@ -58,6 +67,7 @@ struct GameView: View {
                 } else if model.overlay == nil && model.hud.tray {
                     TileTray(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.scene.hudBottom = $0 }
+                        .layoutPriority(1)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
@@ -229,6 +239,7 @@ private struct TopBar: View {
                 Spacer(minLength: 0)
                 if model.mode == .coins {
                     CoinsChip(model: model)
+                        .coachMark(model.coachMarksCoins)
                 } else {
                     Stat(symbol: "star.fill", value: model.game.score, tint: .yellow)
                 }
@@ -264,6 +275,7 @@ private struct TopBar: View {
             HStack(spacing: 8) {
                 ForEach(model.questChips) { quest in
                     QuestChip(quest: quest)
+                        .coachMark(model.coachMarksQuestChip)
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -659,7 +671,10 @@ private struct TileTray: View {
                     .rotationEffect(.degrees(60 * Double(model.rotationTurns)))
                     .animation(.snappy, value: model.rotationTurns)
                     .overlay(alignment: .topTrailing) {
-                        if let quest = tile.quest { QuestTag(quest: quest) }
+                        if let quest = tile.quest {
+                            QuestTag(quest: quest)
+                                .coachMark(model.coachMarksQuestTag)
+                        }
                     }
                     .frame(width: currentSize, height: currentSize)
                     .id(tile.id)
@@ -717,6 +732,10 @@ private struct TileTray: View {
         if model.game.isStuck {
             Text("This tile fits nowhere")
                 .foregroundStyle(.orange)
+        } else if model.demoPowerUp != nil {
+            // Demo tiles pay nothing; the valley that follows is the real one.
+            Text("Practice tile")
+                .foregroundStyle(.secondary)
         } else if let reward = model.projectedReward {
             Label {
                 Text("+\(reward)")
@@ -836,7 +855,8 @@ private struct OverlayCard: View {
         Button {
             model.beginValley()
         } label: {
-            Text("Play").frame(maxWidth: .infinity)
+            // A valley that brings a new power-up opens with a free try of it.
+            Text(model.pendingDemo != nil ? "Try it" : "Play").frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -1085,7 +1105,8 @@ private struct PowerUpBar: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(PowerUp.allCases.filter(model.isUnlocked)) { powerUp in
+            // A demo shows only the power-up it's about.
+            ForEach(model.demoPowerUp.map { [$0] } ?? PowerUp.allCases.filter(model.isUnlocked)) { powerUp in
                 PowerUpButton(powerUp: powerUp, model: model)
             }
         }
@@ -1117,7 +1138,7 @@ private struct PowerUpButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .coachMark(model.tip == .swap && powerUp == .swap)
+        .coachMark(model.coachPowerUp == powerUp || (model.tip == .swap && powerUp == .swap), hand: model.coachPowerUp == powerUp)
         // Dynamite with nothing to blast looks off but still answers a tap, to say why.
         .tint(explainsOnTap ? .secondary : nil)
         .opacity(explainsOnTap ? 0.55 : 1)

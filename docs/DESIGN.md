@@ -30,7 +30,7 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 - **Always a quest going:** 30% of tiles carry a quest (up to 3 at once). Whenever none is active and none is on a tile in view, the game sets one. Half the time it grows a region already on the board, favoring the biggest, such as "grow this village from 14 to 18" (3–5 more tiles, 2–3 for rivers), so building big regions pays off. The other half, it puts a fresh quest on the next tile. If one kind isn't possible, the other is used.
 - **Quest tiles ask for growth, wherever they land:** a quest tile asks its region to grow by its number minus one. Placed on its own, a village-8 tile means "grow to 8"; placed into a 14-village, it becomes "grow to 22" (a toast announces it), so joining a big region never wins a quest outright. This holds in Zen too. Quest rewards follow the growth asked for, counting the quest's first tile, not the region's full size.
 - **Quests always fit the stack:** the whole stack is dealt when the valley starts, and a quest never asks for more than its own tile plus 70% of the matching tiles still to come (60% for rivers, which are harder to join). A river quest of 4 can't appear when only two river tiles remain. A terrain showing on just one side of the quest tile asks for 2 less, since it can only grow one way, and quests favor terrains that cover more of the tile.
-- **Power-ups** are introduced one per valley on the valley's opening card, and bought with coins from the bar under the tile tray:
+- **Power-ups** are introduced one per valley on the valley's opening card (with a free try: Swap in the first run, the others in their demos), and bought with coins from the bar under the tile tray:
 
 | Power-up | Introduced | Price | Effect |
 |---|---|---|---|
@@ -100,15 +100,29 @@ A new player on valley 1 is coached through the first tiles instead of reading r
 
 - **Glimpse (about 10 seconds, at least 2 per beat):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog (2.5 s); the fog lifts (2.5 s, "Build a valley like this, one tile at a time."), a white photo frame drops around it (3 s, "Finish it, and keep the picture."), then it folds away a ring at a time to the single starting tile (2 s). Taps on the board don't cut it short; Skip does.
 - **Five coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 1106390), with dots showing the five steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place. The valley opens with no quest going; the second tile carries one.
-  1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches, and Place wears a ring and the hand. One coin flies in.
-  2. *Quest tile:* the tile carries a forest quest of 3. Its spot keeps its forest side apart from any other forest, so the quest asks for the 3 on its tag (2 more tiles). It matches two sides for two coins.
-  3. *Turn:* Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins and grows the forest to 2 of 3.
-  4. *Finish the quest:* an all-forest tile finishes the quest: 1 coin for its match and 11 for the quest.
+  1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches ("Stitches mean the sides match, and each match pays a coin."), and Place wears a ring and the hand. One coin flies in.
+  2. *Quest tile:* the tag on the tile in the tray wears a ring: "This tile has a quest. Its tag means: grow a forest of 3 tiles." Its spot keeps its forest apart from any other forest, so the quest asks for the 3 on its tag. Once it's down ("Tap Place to start the quest."), the quest chip appears up top and a badge on the board. It matches two sides for two coins.
+  3. *Turn:* the badge pulses ("The badge counts the forest tiles still needed.") and Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins and grows the forest to 2 of 3.
+  4. *Finish the quest:* the quest chip wears a ring ("The chip up top tracks the quest too. One more forest tile finishes it for bonus coins."); an all-forest tile finishes it: 1 coin for its match and 11 for the quest.
   5. *Choice:* Next appears; every fitting spot glows ("Your turn. Put it anywhere that glows."). The fifth tile fits in 6 spots, and wherever it goes, the valley can be finished with or without swapping the sixth tile.
-- **Hand-off:** the menu, tiles left, fit and the power-ups slide in: "20 tiles to go. Can you find 2 hidden lakes?" with **Let's go** (or tap any spot).
-- A tap anywhere but the coached spot shakes the line and pops the spot. "New quest" toasts stay quiet until the hand-off.
+- **Try Swap:** everything slides in, and the coin chip and Swap wear rings: "Matches and quests pay coins, and coins buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free." The swap is free.
+- **Hand-off:** "After this, Swap costs 25 coins. 19 tiles to go. Can you find 2 hidden lakes?" with **Let's go** (or tap any spot).
+- While coaching, a tap anywhere but where the coach points shakes the line and pops the spot, and only the power-up being taught can be tapped. "New quest" toasts stay quiet until the hand-off.
 - **One-time tips** afterwards, each gone with the next action: a tile that fits 2 spots or fewer rings Swap ("Tricky tile? Your coins can Swap it for another."); the first out-of-room card adds "It happens! A power-up can rescue this tile."; the first finished valley rings View valley ("Lift the fog and see what you built."); the first look over it rings Save.
 - **How to Play** in the menu (Coin mode) coaches the next tiles of the current valley with the whole HUD in view: place, turn when a spot can teach it, choice, then a closing line.
+
+## Power-up demos
+
+Valleys 2–5 each bring a power-up, and the first time a player reaches one, its opening card says **Try it** instead of Play. The demo runs on its own little valley (`PowerUpDemo`: a fixed crater and tiles that pay no coins and set no quests; the tray says "Practice tile"), with only that power-up on the bar, and the try is free. When it's done, the bubble gives the price with **Continue**; Continue or Skip deals a fresh real valley, so nothing seen or done in the demo carries over ("A fresh valley. Good luck!").
+
+| Valley | Demo |
+|---|---|
+| 2 Undo | Place the coached tile, then tap Undo to take it back. |
+| 3 Wildcard | The tile in hand fits one spot; tap Wildcard and place the wild tile anywhere. |
+| 4 Dynamite | The coach places a tile, and a mountain comes out of the fog; tap Dynamite, then the glowing mountain. |
+| 5 Lantern | Tap Lantern; every hidden mountain and lake lights up, and the camera frames the whole crater. |
+
+Reset Player brings the demos back; players already past a valley don't get its demo.
 
 ## Visual direction
 

@@ -37,6 +37,8 @@ final class ValleyScene: SKScene {
     /// so the camera can frame the valley in the space between them.
     var hudTop: CGFloat = 0
     var hudBottom: CGFloat = 0
+    /// Where the coach's bubble begins, in view points, or 0 when there's none; the valley is framed above it.
+    var coachTop: CGFloat = 0
 
     override init(size: CGSize) {
         super.init(size: size)
@@ -84,6 +86,9 @@ final class ValleyScene: SKScene {
         syncBadges(game, showing: !model.isViewingValley && model.hud.quests, placement: placement)
         syncGhost(model, in: view)
         syncCoachHand(model, in: view)
+        // The coach points out the quest's badge with a pulse (held still with Reduce Motion).
+        let pulses = model.coachPulsesBadge && !UIAccessibility.isReduceMotionEnabled
+        for badge in badges.values { badge.setCoachPulse(pulses) }
         if let placement {
             playEffects(for: placement, board: game.board, in: view)
         }
@@ -114,7 +119,8 @@ final class ValleyScene: SKScene {
         let height = maxY - minY + geometry.tileSize.height
 
         let top = hudTop
-        let bottom = hudBottom > top ? hudBottom : view.bounds.height
+        var bottom = hudBottom > top ? hudBottom : view.bounds.height
+        if coachTop > top + 100 { bottom = min(bottom, coachTop) }
         let freeWidth = max(view.bounds.width - 24, 100)
         let freeHeight = max(bottom - top - 16, 100)
         let scale = min(max(width / freeWidth, height / freeHeight, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
@@ -788,6 +794,21 @@ private final class QuestBadge: SKNode {
         guard label.text != text else { return }
         label.text = text
         run(.sequence([.scale(to: 1.25, duration: 0.1), .scale(to: 1, duration: 0.12)]))
+    }
+
+    /// A slow pulse while the coach points the badge out.
+    func setCoachPulse(_ isOn: Bool) {
+        let isPulsing = action(forKey: "coach") != nil
+        if isOn && !isPulsing {
+            let grow = SKAction.scale(to: 1.35, duration: 0.45)
+            grow.timingMode = .easeInEaseOut
+            let shrink = SKAction.scale(to: 1, duration: 0.45)
+            shrink.timingMode = .easeInEaseOut
+            run(.repeatForever(.sequence([grow, shrink])), withKey: "coach")
+        } else if !isOn && isPulsing {
+            removeAction(forKey: "coach")
+            run(.scale(to: 1, duration: 0.15))
+        }
     }
 
     enum Ending {

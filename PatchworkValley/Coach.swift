@@ -1,15 +1,36 @@
 import SwiftUI
 import ValleyCore
 
-/// Where the first-run coach is. It opens with a glimpse of a finished valley, coaches the
-/// first tiles of valley 1 (`Tutorial.Step`), then hands the whole game over.
+/// Where the coach is. The first run opens with a glimpse of a finished valley, coaches the
+/// first tiles of valley 1 (`Tutorial.Step`), has the player try Swap, then hands the game over.
+/// Valleys 2–5 each open with a demo of the power-up they bring.
 enum CoachStep: Equatable {
     /// A finished valley lifts out of the fog, is framed like a photo, then folds away to one tile.
     case glimpse
-    /// A coached tile: place, turn, quest, then the player's own choice.
+    /// A coached tile: place, a quest tile, turn, finish the quest, then the player's own choice.
     case tile(Tutorial.Step)
+    /// Coins buy power-ups: the player tries Swap, free this once.
+    case trySwap
     /// Everything slides in, with one last line and "Let's go".
     case handOff
+    /// A power-up's first-time demo, on its own little valley.
+    case demo(PowerUp, DemoBeat)
+}
+
+/// The beats of a power-up demo.
+enum DemoBeat: Equatable {
+    /// Undo: place a tile first, to have something to take back.
+    case place
+    /// Dynamite: the coach places a tile for the player, and a mountain comes out of the fog.
+    case autoPlace
+    /// Tap the power-up, free this once.
+    case use
+    /// Dynamite: tap the glowing mountain.
+    case aim
+    /// Wildcard: put the wild tile anywhere.
+    case placeWild
+    /// The price from now on, then Continue to a fresh valley.
+    case done
 }
 
 /// The glimpse's beats: the finished valley under fog, lit, framed as a picture, then folding away.
@@ -62,14 +83,17 @@ struct CoachBubble: View {
     var nudges = 0
     var onSkip: (() -> Void)?
     var onGo: (() -> Void)?
+    var goTitle = "Let's go"
+
     @ScaledMetric private var dotSize: CGFloat = 7
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(line)
-                .font(.headline)
-                .fixedSize(horizontal: false, vertical: true)
-                .contentTransition(.opacity)
+            // At the largest text sizes the line scrolls, so the tray below never leaves the screen.
+            ViewThatFits(in: .vertical) {
+                lineText
+                ScrollView { lineText }
+            }
             if stepIndex != nil || onSkip != nil || onGo != nil {
                 HStack(spacing: 6) {
                     if let stepIndex {
@@ -87,7 +111,7 @@ struct CoachBubble: View {
                             .controlSize(.small)
                     }
                     if let onGo {
-                        Button("Let's go", action: onGo)
+                        Button(goTitle, action: onGo)
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -110,6 +134,14 @@ struct CoachBubble: View {
         .onChange(of: line, initial: true) { _, newLine in
             AccessibilityNotification.Announcement(newLine).post()
         }
+    }
+
+    private var lineText: some View {
+        Text(line)
+            .font(.headline)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentTransition(.opacity)
     }
 }
 
