@@ -859,7 +859,7 @@ private struct OverlayCard: View {
             }
             .padding(.vertical, 4)
         } else {
-            Text("Quests pay rewards. Spend them on power-ups.")
+            Text("Quests earn rewards. Spend them on power-ups.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }

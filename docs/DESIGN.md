@@ -100,7 +100,7 @@ A new player on valley 1 sees a short intro, then is coached through the first t
 
 - **Intro (five pages, each waiting for Next, with Skip):** just the board, the bubble with dots for the five pages, and from page 2 the coin chip. It tells the game's hook, build a valley, finish quests, earn rewards, keep what you build, on the tutorial valley itself:
   1. "A valley, lost in fog. Can you bring it back?" The tutorial valley, finished by the bot, barely shows through drifting fog.
-  2. "Stitch it back together, one patch at a time. Every matching side pays a reward." The fog clears, the valley folds away a ring at a time to its first tile, and a tile shows its stitches and goes down; its coin flies to the chip.
+  2. "Stitch it back together, one patch at a time. Every matching side earns a reward." The fog clears, the valley folds away a ring at a time to its first tile, and a tile shows its stitches and goes down; its coin flies to the chip.
   3. "Quests help grow your valley and earn a pile of rewards when finished." Three more tiles go down by themselves: the quest chip and badge count down, the chip turns green, and twelve coins stream to the chip.
   4. "Spend your rewards on helpful power-ups." A card headed "Power-ups" lists all five, arriving one after another, each with a few words.
   5. "Finish a valley, then save and share." The finished valley comes back, lit, and a photo frame drops around it; the button says **Let's go!**.
@@ -112,7 +112,7 @@ A new player on valley 1 sees a short intro, then is coached through the first t
   3. *Turn:* the badge pulses ("The badge counts the forest tiles still needed.") and Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins and grows the forest to 2 of 3.
   4. *Finish the quest:* the quest chip wears a ring ("The chip up top tracks the quest too. One more forest tile finishes it for bonus rewards."); an all-forest tile finishes it: 1 coin for its match and 11 for the quest.
   5. *Choice:* Next appears; every fitting spot glows ("Your turn, tap any glowing spot."). The fifth tile fits in 6 spots, and wherever it goes, the valley can be finished with or without swapping the sixth tile.
-- **Try Swap:** everything slides in, and the coin chip and Swap wear rings: "Matches and quests pay rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free." The swap is free; Skip here goes on to the hand-off.
+- **Try Swap:** everything slides in, and the coin chip and Swap wear rings: "Matches and quests earn rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free." The swap is free; Skip here goes on to the hand-off.
 - **Hand-off:** the tiles-left chip wears a ring: "19 tiles left to place. Can you find 2 hidden lakes?" Only **Let's go!** closes it.
 - While coaching, a tap anywhere but where the coach points shakes the line and pops the spot, and only the power-up being taught can be tapped. "New quest" toasts stay quiet until the hand-off.
 - **One-time tips** afterwards, each gone with the next action: a tile that fits 2 spots or fewer rings Swap ("Tricky tile? Spend rewards to Swap it for another."); the first out-of-room card adds "It happens! A power-up can rescue this tile."; the first finished valley rings View valley ("Lift the fog and see what you built."); the first look over it rings Save.

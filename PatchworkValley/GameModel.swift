@@ -855,7 +855,7 @@ final class GameModel {
         case .tile(.choice):
             return "Your turn, tap any glowing spot."
         case .trySwap:
-            return "Matches and quests pay rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free."
+            return "Matches and quests earn rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free."
         case .handOff:
             if isReplayingCoach { return "That's the basics. Match sides, finish quests, and find what's hidden." }
             let lakes = game.rules.lakeCount
@@ -926,7 +926,7 @@ final class GameModel {
     /// The intro's words, one line per page.
     private static let introLines = [
         "A valley, lost in fog. Can you bring it back?",
-        "Stitch it back together, one patch at a time. Every matching side pays a reward.",
+        "Stitch it back together, one patch at a time. Every matching side earns a reward.",
         "Quests help grow your valley and earn a pile of rewards when finished.",
         "Spend your rewards on helpful power-ups.",
         "Finish a valley, then save and share.",
