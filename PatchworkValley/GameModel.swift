@@ -836,7 +836,7 @@ final class GameModel {
         case .tile(.questTile):
             if selectedSlot != nil { return isCoachedTileReady ? "Tap Place to start the quest." : "Tap the patch to turn it." }
             if let quest = game.current?.quest {
-                return "The below patch has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(patchCount(quest.target)). Tap the glowing spot."
+                return "The patch below has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(patchCount(quest.target)). Tap the glowing spot."
             }
             return "Tap the glowing spot."
         case .tile(.turn):
