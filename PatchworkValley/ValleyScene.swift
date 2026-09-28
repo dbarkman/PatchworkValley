@@ -355,7 +355,10 @@ final class ValleyScene: SKScene {
     private func syncSlots(_ game: ValleyGame, in view: SKView) {
         // No open spots while the intro shows its finished valley.
         let hidden = model?.glimpsePhase != nil
-        let open = game.isOver || hidden ? [] : game.board.openSlots
+        // A finished or stuck valley shows no spots, except a demo's tile that fits nowhere (the
+        // Wildcard demo), where the spots show dim: there's room, the tile just doesn't match.
+        let stuckInDemo = model?.demoPowerUp != nil && game.outcome == .outOfRoom
+        let open = (game.isOver && !stuckInDemo) || hidden ? [] : game.board.openSlots
         for (hex, sprite) in slotSprites where !open.contains(hex) {
             slotSprites[hex] = nil
             glowingSlots.remove(hex)

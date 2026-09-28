@@ -50,7 +50,8 @@ public enum PowerUpDemo {
 
     /// Each demo's crater is the floor within 3 steps of the start, with a few bulges and bays so it
     /// looks like a real valley, ringed by a rim. Peaks and lakes stand 2 or more steps from the start,
-    /// so they begin in the fog. The starter shows all four land terrains, like a real crater's.
+    /// so they begin in the fog. The starter shows all four land terrains, like a real crater's, except
+    /// in the Wildcard demo, where it has no village so the all-village tile in hand fits nowhere.
     private static func design(for powerUp: PowerUp) -> Design? {
         switch powerUp {
         case .swap:
@@ -67,13 +68,13 @@ public enum PowerUpDemo {
                 spot: Hex(0, -1)
             )
         case .wildcard:
-            // An all-village tile, and the starter shows village on one side only, so it fits in one spot.
+            // An all-village tile, and the starter has no village at all, so it fits nowhere until it turns wild.
             return Design(
                 crater: crater(
                     bulges: [Hex(-4, 1), Hex(-4, 2), Hex(-3, -1), Hex(1, 3), Hex(2, 2)], bays: [Hex(3, -3), Hex(3, 0)],
                     peaks: [Hex(2, -2), Hex(2, -3), Hex(-1, -2), Hex(-3, 3), Hex(0, 3), Hex(1, 2)], lakes: [Hex(-3, 1), Hex(3, -1)]
                 ),
-                starter: tile("fccvmm", id: 0),
+                starter: tile("ffccmm", id: 0),
                 stack: stack(["vvvvvv", "mmffcc", "ccmmmf", "ffffmm", "mcccff", "fmmmcc"])
             )
         case .dynamite:

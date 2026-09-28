@@ -125,7 +125,7 @@ Valleys 2–5 each bring a power-up, and the first time a player reaches one, it
 | Valley | Demo |
 |---|---|
 | 2 Undo | Place the coached tile, then tap Undo to take it back. |
-| 3 Wildcard | The tile in hand fits one spot; tap Wildcard and place the wild tile anywhere. |
+| 3 Wildcard | The starter has no village, so the all-village tile in hand fits nowhere ("This tile fits nowhere."; no out-of-room card during a demo). Tap Wildcard and place the wild tile anywhere. |
 | 4 Dynamite | "Watch: a tile goes down, and a mountain comes out of the fog." waits for **Next**; the coach places the tile and a mountain rises. Tap Dynamite, then the glowing mountain; "Boom! Mountains on the valley's edge can't be blasted." |
 | 5 Lantern | "The Lantern shows them all for one turn." Tap Lantern; every hidden mountain and lake lights up, the camera frames the whole crater: "There's everything the fog was hiding." |
 

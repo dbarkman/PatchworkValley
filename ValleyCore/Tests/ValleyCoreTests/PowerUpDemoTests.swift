@@ -43,18 +43,19 @@ import Testing
         #expect(Tutorial.playOut(&first) == Tutorial.playOut(&second))
     }
 
-    /// A demo is a valley of its power-up's number that pays no coins and sets no quests.
+    /// A demo is a valley of its power-up's number that pays no coins and sets no quests. Its tile
+    /// fits somewhere, except in the Wildcard demo, where it fits nowhere until it turns wild.
     @Test(arguments: PowerUpDemo.demoed)
     func aDemoStartsQuietAndPaysNothing(_ powerUp: PowerUp) throws {
         let game = PowerUpDemo.makeGame(for: powerUp)
-        #expect(game.outcome == .playing)
+        #expect(game.outcome == (powerUp == .wildcard ? .outOfRoom : .playing))
         #expect(game.quests.isEmpty)
         #expect(game.tilesLeft == game.rules.startingTiles)
         #expect(game.rules.startingTiles == 6)
         #expect(game.rules.questTargetBonus == Rules.coins(valley: powerUp.unlockValley).questTargetBonus)
         #expect(game.board.requiresMatch && !game.rules.allowsDiscard)
         let tile = try #require(game.current)
-        #expect(!fittingSlots(for: tile, on: game.board).isEmpty)
+        #expect(fittingSlots(for: tile, on: game.board).isEmpty == (powerUp == .wildcard))
         for slot in game.board.openSlots {
             for steps in 0..<6 {
                 let evaluation = game.board.evaluate(tile.rotatedClockwise(steps), at: slot)
@@ -68,6 +69,8 @@ import Testing
     @Test(arguments: PowerUpDemo.demoed)
     func theWholeDemoStackFits(_ powerUp: PowerUp) {
         var game = PowerUpDemo.makeGame(for: powerUp)
+        // The Wildcard demo's first tile only goes down once it's wild.
+        if powerUp == .wildcard { game.makeCurrentWild() }
         let dealt = Tutorial.playOut(&game)
         #expect(dealt.count == game.rules.startingTiles)
         #expect(game.outcome == .outOfTiles)
@@ -105,17 +108,22 @@ import Testing
         #expect(PowerUpDemo.target(for: .undo, in: before) == nil)
     }
 
-    @Test func wildcardTurnsATileThatBarelyFitsIntoOneThatFitsAnywhere() throws {
+    @Test func wildcardTurnsATileThatFitsNowhereIntoOneThatFitsAnywhere() throws {
         var game = PowerUpDemo.makeGame(for: .wildcard)
         let tile = try #require(game.current)
-        #expect((1...2).contains(fittingSlots(for: tile, on: game.board).count))
+        let starter = try #require(game.board[.origin])
+        #expect(tile.edges.allSatisfy { $0 == .village })
+        #expect(!starter.contains(.village), "no village to match")
+        #expect(fittingSlots(for: tile, on: game.board).isEmpty)
+        #expect(game.outcome == .outOfRoom)
         #expect(PowerUpDemo.spot(for: .wildcard, in: game) == nil)
         #expect(PowerUpDemo.target(for: .wildcard, in: game) == nil)
         game.makeCurrentWild()
         let wild = try #require(game.current)
         #expect(wild.isWild)
         #expect(wild.id != tile.id, "the tray sees a new tile")
-        #expect(fittingSlots(for: wild, on: game.board).count >= 3)
+        #expect(game.outcome == .playing)
+        #expect(fittingSlots(for: wild, on: game.board).count == game.board.openSlots.count)
         #expect(finishes(game))
     }
 

@@ -237,7 +237,8 @@ final class GameModel {
         if mode == .levels && hasFinishedAllLevels { return .allLevelsDone }
         return switch (mode, game.outcome) {
         case (.coins, .outOfTiles): isViewingValley ? nil : .valleyDone
-        case (.coins, .outOfRoom): isAimingDynamite ? nil : .valleyStuck
+        // A demo never shows the out-of-room card: the Wildcard demo starts with a tile that fits nowhere.
+        case (.coins, .outOfRoom): isAimingDynamite || demoPowerUp != nil ? nil : .valleyStuck
         case (.coins, _): isShowingValleyIntro ? .valleyIntro : nil
         case (.levels, .playing): isShowingLevelIntro ? .levelIntro : nil
         case (.levels, .won): .levelWon
@@ -876,7 +877,7 @@ final class GameModel {
         case (.undo, .use):
             return "Changed your mind? Undo takes back your last tile. Tap Undo. This one's free."
         case (.wildcard, .use):
-            return "This tile barely fits. A Wildcard turns it into a patch that matches anything. Tap Wildcard. This one's free."
+            return "This tile fits nowhere. A Wildcard turns it into a patch that matches anything. Tap Wildcard. This one's free."
         case (.wildcard, .placeWild):
             return selectedSlot == nil ? "It matches every side. Put it anywhere that glows." : "Tap Place."
         case (.dynamite, .autoPlace):
