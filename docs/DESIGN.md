@@ -96,9 +96,16 @@ Coin mode builds the habit: players earn coins that get them a little further ea
 
 ## First run
 
-A new player on valley 1 is coached through the first tiles instead of reading rules; players past valley 1 never see it. It takes about 45 seconds, and **Skip** is always there.
+A new player on valley 1 sees a short intro, then is coached through the first tiles instead of reading rules; players past valley 1 never see it. **Skip** is always there.
 
-- **Glimpse (about 10 seconds, at least 2 per beat):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog (2.5 s); the fog lifts (2.5 s, "Build a valley like this, one tile at a time."), a white photo frame drops around it (3 s, "Finish it, and keep the picture."), then it folds away a ring at a time to the single starting tile (2 s). Taps on the board don't cut it short; Skip does.
+- **Intro (five pages, each waiting for Next, with Skip):** no HUD, just the board and the bubble, with dots for the five pages. It tells the game's hook, build a valley, finish quests, earn coins, keep what you build, on the tutorial valley itself:
+  1. "A valley, lost in fog. Can you bring it back?" The tutorial valley, finished by the bot, barely shows through drifting fog.
+  2. "Stitch it back together, one patch at a time. Every matching side pays a coin." The fog clears, the valley folds away a ring at a time to its first tile, and a tile shows its stitches and goes down (+1).
+  3. "Grow what the valley asks for. Each quest you finish pays a pile of coins." Three more tiles go down by themselves: the quest's badge counts 2, then 1, and the quest pays out in a shower of coins (+12).
+  4. "Spend your coins on clever tricks." The five power-ups arrive one after another, each with a few words.
+  5. "Finish it, and it's yours to keep." The finished valley comes back, lit, and a photo frame drops around it; the button says **Let's play**.
+
+  The intro's tiles go down by themselves and their coins float up from the board without reaching the wallet; Next finishes a page's tiles at once. Let's play (or Skip on any page) folds the board down to the valley's first tile and starts the coached tiles, which have their own Skip.
 - **Five coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 1106390), with dots showing the five steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place. The valley opens with no quest going; the second tile carries one.
   1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches ("Stitches mean the sides match, and each match pays a coin."), and Place wears a ring and the hand. One coin flies in.
   2. *Quest tile:* the tag on the tile in the tray wears a ring: "This tile has a quest. Its tag means: grow a forest of 3 tiles." Its spot keeps its forest apart from any other forest, so the quest asks for the 3 on its tag. Once it's down ("Tap Place to start the quest."), the quest chip appears up top and a badge on the board. It matches two sides for two coins.

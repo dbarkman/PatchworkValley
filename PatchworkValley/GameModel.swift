@@ -151,7 +151,9 @@ final class GameModel {
     /// A one-time tip showing now.
     private(set) var tip: Tip?
     @ObservationIgnored private var glimpseBoard: Board?
-    @ObservationIgnored private var glimpseToken = 0
+    @ObservationIgnored private var introToken = 0
+    /// Let's play or Skip was tapped: the intro folds away and takes no more taps.
+    private(set) var isEndingIntro = false
     @ObservationIgnored private var tipsSeen: Set<String> = []
     /// Power-ups whose demo the player has had.
     @ObservationIgnored private var demosSeen: Set<String> = []
@@ -203,7 +205,7 @@ final class GameModel {
             needsFirstRun = true
             coinGame = Tutorial.makeGame()
             isShowingValleyIntro = false
-            coachStep = .glimpse
+            coachStep = .intro(0)
             glimpsePhase = .fogged
             glimpseBoard = Tutorial.glimpse()
         }
@@ -249,7 +251,7 @@ final class GameModel {
 
     /// The board as drawn: a finished valley that's been looked over shows everything; the run itself never changes.
     var displayBoard: Board {
-        if coachStep == .glimpse, let glimpseBoard, let glimpsePhase, glimpsePhase != .folding {
+        if isInIntro, let glimpseBoard, let glimpsePhase, glimpsePhase != .folding {
             return glimpsePhase == .fogged ? glimpseBoard : glimpseBoard.lit()
         }
         return mode == .coins && hasRevealedValley && game.outcome == .outOfTiles ? game.board.lit() : game.board
@@ -277,7 +279,7 @@ final class GameModel {
     /// First tap on a slot moves the ghost there in its best rotation; tapping the ghost again cycles fitting rotations.
     func tap(_ hex: Hex) {
         // The glimpse plays out (Skip ends it); a tap at the hand-off lets the player go.
-        if coachStep == .glimpse { return }
+        if isInIntro { return }
         if coachStep == .handOff { finishCoach() }
         // While the coach wants a power-up (or Continue) tapped, the board only nudges.
         if coachStep == .trySwap || isDemoWaitingOffBoard {
@@ -637,7 +639,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         haptics.success()
-        startGlimpse(animated: true)
+        startIntro(animated: true)
     }
 
     func fitValley() {
@@ -769,9 +771,11 @@ final class GameModel {
         guard let coachStep, !isReplayingCoach else { return .all }
         var parts = HUDParts(menu: false, tilesLeft: false, fit: false, quests: false, rotate: false, next: false, powerUps: false)
         switch coachStep {
-        case .glimpse:
+        case .intro(let page):
             parts.topBar = false
             parts.tray = false
+            // The quest badge shows while the intro builds its little valley.
+            parts.quests = page == 1 || page == 2 || page == 3
         case .tile(.place):
             break
         case .tile(.questTile):
@@ -818,8 +822,9 @@ final class GameModel {
         if tip == .swap { return Tip.swap.line }
         guard let coachStep else { return nil }
         switch coachStep {
-        case .glimpse:
-            return glimpsePhase == .framed || glimpsePhase == .folding ? "Finish it, and keep the picture." : "Build a valley like this, one tile at a time."
+        case .intro(let page):
+            // The bubble leaves while the intro folds away.
+            return isEndingIntro ? nil : Self.introLines[min(page, Self.introLines.count - 1)]
         case .tile(.place):
             if selectedSlot == nil { return "Tap the glowing spot." }
             return isCoachedTileReady ? "Stitches mean the sides match, and each match pays a coin. Tap Place." : "Tap the tile to turn it."
@@ -891,9 +896,40 @@ final class GameModel {
 
     /// Which of the coached tiles is in hand, for the bubble's dots (first run only).
     var coachStepIndex: Int? {
+        if case .intro(let page) = coachStep { return page }
         guard !isReplayingCoach, case .tile(let step) = coachStep else { return nil }
         return step.rawValue
     }
+
+    /// How many dots the bubble shows: the intro's pages, or the coached tiles.
+    var coachDotCount: Int {
+        isInIntro ? introPages : Tutorial.Step.allCases.count
+    }
+
+    /// The intro is on screen.
+    var isInIntro: Bool {
+        if case .intro = coachStep { return true }
+        return false
+    }
+
+    /// The intro's first page shows the valley through drifting fog.
+    var showsIntroFog: Bool {
+        coachStep == .intro(0) && !isEndingIntro
+    }
+
+    /// The intro's power-ups page is showing.
+    var showsPowerUpShowcase: Bool {
+        coachStep == .intro(3) && !isEndingIntro
+    }
+
+    /// The intro's words, one line per page.
+    private static let introLines = [
+        "A valley, lost in fog. Can you bring it back?",
+        "Stitch it back together, one patch at a time. Every matching side pays a coin.",
+        "Grow what the valley asks for. Each quest you finish pays a pile of coins.",
+        "Spend your coins on clever tricks.",
+        "Finish it, and it's yours to keep.",
+    ]
 
     /// Where the coach's hand points on the board, if anywhere: the spot to tap, the ghost to turn, or the mountain to blast.
     var coachHandHex: Hex? {
@@ -962,6 +998,7 @@ final class GameModel {
     /// The bubble's button: "Let's go" at the hand-off, "Continue" when a demo is done.
     var coachGoTitle: String? {
         switch coachStep {
+        case .intro(let page): page < introPages - 1 ? "Next" : "Let's play"
         case .handOff: "Let's go"
         case .demo(_, .done): "Continue"
         default: nil
@@ -970,14 +1007,14 @@ final class GameModel {
 
     /// Skip is there whenever the bubble has no button of its own.
     var showsCoachSkip: Bool {
-        coachStep != nil && coachGoTitle == nil
+        coachStep != nil && (coachGoTitle == nil || isInIntro)
     }
 
     func coachGo() {
-        if case .demo = coachStep {
-            completeDemo()
-        } else {
-            finishCoach()
+        switch coachStep {
+        case .intro: nextIntroPage()
+        case .demo: completeDemo()
+        default: finishCoach()
         }
     }
 
@@ -990,7 +1027,7 @@ final class GameModel {
     func beginFirstRunIfNeeded() {
         guard needsFirstRun else { return }
         needsFirstRun = false
-        startGlimpse(animated: false)
+        startIntro(animated: false)
     }
 
     /// How to Play is on offer: a Coin valley in play, nothing else on screen or in hand.
@@ -1010,7 +1047,11 @@ final class GameModel {
 
     /// Skip: the first run (or a demo) ends and the whole game is there.
     func skipCoach() {
-        if coachStep == .glimpse { scene.recenter() }
+        // Skipping the intro goes on to the coached tiles; they have their own Skip.
+        if isInIntro {
+            if !isEndingIntro { endIntro() }
+            return
+        }
         finishCoach()
     }
 
@@ -1028,7 +1069,7 @@ final class GameModel {
     }
 
     private func endCoach() {
-        glimpseToken += 1
+        introToken += 1
         coachStep = nil
         coachSpot = nil
         coachTile = nil
@@ -1038,53 +1079,144 @@ final class GameModel {
         glimpseBoard = nil
         demoTarget = nil
         demoToken += 1
+        isEndingIntro = false
     }
 
     /// Seconds each beat of the glimpse holds: long enough to take in, at least 2 each.
-    private static let glimpseBeat = (fogged: 2.5, lit: 2.5, framed: 3.0, folding: 2.0)
-
-    /// The glimpse: the finished valley under fog, the fog lifting, a photo frame, then it folds away.
+    /// The intro, first page: the tutorial's finished valley, barely there through the fog. The
+    /// intro builds on a fresh copy of the tutorial valley, which starts over for the coached tiles.
     /// On a first launch it opens already framed; after Reset Player the camera glides to it.
-    private func startGlimpse(animated: Bool) {
-        glimpseToken += 1
-        let token = glimpseToken
-        coachStep = .glimpse
+    private func startIntro(animated: Bool) {
+        introToken += 1
+        isEndingIntro = false
+        coachStep = .intro(0)
         glimpseBoard = Tutorial.glimpse()
         glimpsePhase = .fogged
+        glimpseFrame = nil
+        coinGame = Tutorial.makeGame()
         resetSelection()
         // The HUD is hidden, so the valley is framed on the whole screen.
         scene.hudTop = 0
         scene.hudBottom = 0
         scene.sync()
         scene.fitValley(animated: animated)
-        Task {
-            try? await Task.sleep(for: .seconds(Self.glimpseBeat.fogged))
-            guard glimpseToken == token else { return }
+    }
+
+    /// Next: the page's own tiles finish going down, then the next page begins (or the intro ends).
+    private func nextIntroPage() {
+        guard case .intro(let page) = coachStep, !isEndingIntro else { return }
+        introToken += 1
+        settleIntroTiles(for: page)
+        guard page + 1 < introPages else {
+            endIntro()
+            return
+        }
+        showIntroPage(page + 1)
+    }
+
+    /// The tutorial steps the intro places by itself: one tile on page 2, three more (a quest) on page 3.
+    private static let introSteps: [Tutorial.Step] = [.place, .questTile, .turn, .finishQuest]
+
+    private func showIntroPage(_ page: Int) {
+        let token = introToken
+        coachStep = .intro(page)
+        switch page {
+        case 1:
+            // The fog clears and the valley folds away to where it starts; then a tile stitches in.
+            glimpsePhase = .folding
+            scene.sync()
+            scene.recenter()
+            Task {
+                try? await Task.sleep(for: .seconds(1.8))
+                guard introToken == token else { return }
+                glimpsePhase = nil
+                scene.sync()
+                await playIntroTile(token: token)
+            }
+        case 2:
+            // A quest tile goes down, the badge counts down, and the quest pays out.
+            Task {
+                while introToken == token, coinGame.tilesPlaced < Self.introSteps.count {
+                    await playIntroTile(token: token)
+                    try? await Task.sleep(for: .seconds(0.6))
+                }
+            }
+        case 3:
+            // The power-ups page draws itself over the board.
+            scene.sync()
+        default:
+            // The finished valley comes back, lit, and a photo frame drops around it.
             glimpsePhase = .lit
             scene.sync()
             scene.fitValley()
-            try? await Task.sleep(for: .seconds(Self.glimpseBeat.lit))
-            guard glimpseToken == token else { return }
-            glimpseFrame = scene.screenRect(of: displayBoard.tiles.keys)
-            glimpsePhase = .framed
-            try? await Task.sleep(for: .seconds(Self.glimpseBeat.framed))
-            guard glimpseToken == token else { return }
-            foldGlimpse()
+            Task {
+                try? await Task.sleep(for: .seconds(1.2))
+                guard introToken == token else { return }
+                glimpseFrame = scene.screenRect(of: displayBoard.tiles.keys)
+                glimpsePhase = .framed
+            }
         }
     }
 
-    /// The glimpse's valley folds away, outer ring first, down to the one tile the player starts from.
-    private func foldGlimpse() {
-        guard coachStep == .glimpse else { return }
-        glimpseToken += 1
-        let token = glimpseToken
-        glimpsePhase = .folding
+    /// The intro places the next of its tiles: the ghost shows it matching for a moment, then it goes down.
+    private func playIntroTile(token: Int) async {
+        guard coinGame.tilesPlaced < Self.introSteps.count else { return }
+        guard aimIntroTile() else { return }
+        scene.sync()
+        try? await Task.sleep(for: .seconds(1.2))
+        guard introToken == token else { return }
+        placeIntroTile()
+    }
+
+    /// Puts the ghost of the intro's next tile on its spot, turned the way the tutorial places it.
+    private func aimIntroTile() -> Bool {
+        let step = Self.introSteps[coinGame.tilesPlaced]
+        guard let spot = Tutorial.spot(for: step, in: coinGame), let tile = coinGame.current else { return false }
+        let turns = step == .turn
+            ? Tutorial.firstFittingTurn(for: tile, at: spot, on: coinGame.board)
+            : coinGame.board.bestRotation(for: tile, at: spot)
+        selectedSlot = spot
+        if let turns, turns != 0 { turn(turns) }
+        return true
+    }
+
+    /// Places the intro's tile. Its coins float up from the board and never reach the wallet.
+    private func placeIntroTile() {
+        guard let slot = selectedSlot, let result = coinGame.placeCurrent(at: slot) else { return }
+        resetSelection()
+        result.completedQuests.isEmpty ? haptics.place() : haptics.success()
+        scene.sync(placement: result)
+        // Keep the little valley centered as it grows.
+        scene.fitValley()
+    }
+
+    /// Next was tapped before the page's tiles were all down: they go down now.
+    private func settleIntroTiles(for page: Int) {
+        let target = page == 1 ? 1 : page == 2 ? Self.introSteps.count : 0
+        if page == 1 { glimpsePhase = nil }
+        while coinGame.tilesPlaced < target {
+            if selectedSlot == nil { guard aimIntroTile() else { break } }
+            placeIntroTile()
+        }
+    }
+
+    /// The intro is over (Let's play, or Skip): whatever is showing folds away to the tutorial
+    /// valley's first tile, and the coached tiles begin.
+    private func endIntro() {
+        guard isInIntro, !isEndingIntro else { return }
+        isEndingIntro = true
+        introToken += 1
+        let token = introToken
         glimpseFrame = nil
+        coinGame = Tutorial.makeGame()
+        resetSelection()
+        glimpsePhase = .folding
         scene.sync()
         scene.recenter()
         Task {
-            try? await Task.sleep(for: .seconds(Self.glimpseBeat.folding))
-            guard glimpseToken == token else { return }
+            try? await Task.sleep(for: .seconds(1.8))
+            guard introToken == token else { return }
+            isEndingIntro = false
             glimpsePhase = nil
             glimpseBoard = nil
             enterCoachStep(.tile(.place))
@@ -1105,7 +1237,7 @@ final class GameModel {
         case .tile(let step): enterCoachStep(self.step(after: step))
         case .demo(let powerUp, .place), .demo(let powerUp, .autoPlace): enterDemoBeat(powerUp, .use)
         case .demo(let powerUp, .placeWild): enterDemoBeat(powerUp, .done)
-        case .glimpse, .trySwap, .handOff, .demo: break
+        case .intro, .trySwap, .handOff, .demo: break
         }
     }
 

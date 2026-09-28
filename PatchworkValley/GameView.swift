@@ -10,7 +10,13 @@ struct GameView: View {
             SpriteView(scene: model.scene, options: [.ignoresSiblingOrder])
                 .ignoresSafeArea()
 
+            if model.showsIntroFog {
+                IntroFog()
+                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+            }
+
             GlimpseFrameLayer(frame: model.glimpseFrame)
+
 
             // Cards sit under the HUD so the menu stays reachable from any card.
             if let overlay = model.overlay {
@@ -38,12 +44,20 @@ struct GameView: View {
                         .id(toast.id)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                Spacer()
+                // The intro's power-ups page fills the space above the bubble; otherwise the board shows through.
+                if model.showsPowerUpShowcase {
+                    PowerUpShowcase()
+                        .frame(maxHeight: .infinity)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                } else {
+                    Spacer()
+                }
                 // The coach speaks above the tray; it steps aside while a big coin payout pours in.
                 if let line = model.coachLine, !model.isBigPayoutInFlight {
                     CoachBubble(
                         line: line,
                         stepIndex: model.coachStepIndex,
+                        dotCount: model.coachDotCount,
                         nudges: model.coachNudges,
                         onSkip: model.showsCoachSkip ? { model.skipCoach() } : nil,
                         onGo: model.coachGoTitle != nil ? { model.coachGo() } : nil,
@@ -1170,6 +1184,17 @@ extension PowerUp {
         case .wildcard: "sparkles"
         case .dynamite: "burst.fill"
         case .lantern: "lightbulb.fill"
+        }
+    }
+
+    /// A few words for the intro's power-ups page.
+    var pitch: String {
+        switch self {
+        case .undo: "Take back your last tile"
+        case .swap: "Trade your tile for another"
+        case .wildcard: "A patch that matches anything"
+        case .dynamite: "Blast a mountain out of the way"
+        case .lantern: "Light up what the fog hides"
         }
     }
 

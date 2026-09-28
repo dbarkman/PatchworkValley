@@ -66,8 +66,8 @@ final class ValleyScene: SKScene {
             view.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(handlePinch)))
         }
         sync()
-        // A first run opens on the glimpse's whole valley, already framed.
-        if model?.coachStep == .glimpse { fitValley(animated: false) }
+        // A first run opens on the intro's whole valley, already framed.
+        if model?.isInIntro == true { fitValley(animated: false) }
     }
 
     // MARK: - Reconciling with the model
@@ -147,8 +147,8 @@ final class ValleyScene: SKScene {
             guard let tile = board[hex] else { return true }
             return sprite.texture !== texture(for: tile.edges, in: view)
         }
-        // A whole valley going away (the glimpse, a new valley) folds up from the outside in;
-        // the glimpse folds slowly, a ring at a time, so the player sees it come down to one tile.
+        // A whole valley going away (the intro's valley, a new valley) folds up from the outside in;
+        // the intro folds slowly, a ring at a time, so the player sees it come down to one tile.
         let farthest = stale.keys.map { $0.distance(to: .origin) }.max() ?? 0
         let ringDelay = model?.glimpsePhase == .folding ? 0.2 : 0.06
         for (hex, sprite) in stale {
@@ -350,8 +350,8 @@ final class ValleyScene: SKScene {
     }
 
     private func syncSlots(_ game: ValleyGame, in view: SKView) {
-        // No open spots while the glimpse's finished valley is on show.
-        let hidden = model?.coachStep == .glimpse
+        // No open spots while the intro shows its finished valley.
+        let hidden = model?.glimpsePhase != nil
         let open = game.isOver || hidden ? [] : game.board.openSlots
         for (hex, sprite) in slotSprites where !open.contains(hex) {
             slotSprites[hex] = nil
@@ -550,12 +550,20 @@ final class ValleyScene: SKScene {
     private func playEffects(for placement: PlacementResult, board: Board, in view: SKView) {
         let center = geometry.center(of: placement.hex)
         let above = CGPoint(x: center.x, y: center.y + geometry.radius * 0.4)
-        // Coin mode's coins fly from the tile to the coin chip instead (see `CoinFlightLayer`).
-        if model?.mode != .coins, placement.points > 0 {
+        // Coin mode's coins fly from the tile to the coin chip instead (see `CoinFlightLayer`); the
+        // intro's coins just float up, since they never reach the wallet.
+        if model?.isInIntro == true, placement.coins > 0 {
+            floatText("+\(placement.coins)", at: above, color: Palette.coin)
+        } else if model?.mode != .coins, placement.points > 0 {
             floatText("+\(placement.points)", at: above, color: .white)
         }
         for quest in placement.completedQuests {
             flash(board.region(of: quest.terrain, from: quest.anchor), from: quest.anchor, in: view)
+            // The intro's quest pays out in a shower of coins, since its coins never fly to a chip.
+            if model?.isInIntro == true {
+                puff(at: center, color: Palette.coin, count: 16, reach: 1.8)
+                puff(at: geometry.center(of: quest.anchor), color: Palette.coin, count: 10, reach: 1.2)
+            }
         }
         for goal in placement.metGoals {
             flash(board.largestRegion(of: goal.terrain), from: placement.hex, in: view)
@@ -629,8 +637,8 @@ final class ValleyScene: SKScene {
 
     @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
         guard let view = recognizer.view else { return }
-        // The glimpse holds the camera still; the drag is dropped, not saved up for later.
-        guard model?.coachStep != .glimpse else {
+        // The intro holds the camera still; the drag is dropped, not saved up for later.
+        guard model?.isInIntro != true else {
             recognizer.setTranslation(.zero, in: view)
             return
         }
@@ -643,7 +651,7 @@ final class ValleyScene: SKScene {
     /// Zooms around the point between the fingers, so what's under them stays put.
     @objc private func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
         guard let view = recognizer.view else { return }
-        guard model?.coachStep != .glimpse else {
+        guard model?.isInIntro != true else {
             recognizer.scale = 1
             return
         }

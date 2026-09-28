@@ -1,12 +1,13 @@
 import SwiftUI
 import ValleyCore
 
-/// Where the coach is. The first run opens with a glimpse of a finished valley, coaches the
-/// first tiles of valley 1 (`Tutorial.Step`), has the player try Swap, then hands the game over.
+/// Where the coach is. The first run opens with a five-page intro, coaches the first tiles of
+/// valley 1 (`Tutorial.Step`), has the player try Swap, then hands the game over.
 /// Valleys 2–5 each open with a demo of the power-up they bring.
 enum CoachStep: Equatable {
-    /// A finished valley lifts out of the fog, is framed like a photo, then folds away to one tile.
-    case glimpse
+    /// The intro, one page at a time (0 to `introPages - 1`), each waiting for Next: a valley in
+    /// fog, tiles stitching together, a quest paying out, the power-ups, and the finished valley to keep.
+    case intro(Int)
     /// A coached tile: place, a quest tile, turn, finish the quest, then the player's own choice.
     case tile(Tutorial.Step)
     /// Coins buy power-ups: the player tries Swap, free this once.
@@ -33,10 +34,13 @@ enum DemoBeat: Equatable {
     case done
 }
 
-/// The glimpse's beats: the finished valley under fog, lit, framed as a picture, then folding away.
+/// How the intro shows its finished valley: under fog, lit, framed as a picture, or folding away.
 enum GlimpsePhase: Equatable {
     case fogged, lit, framed, folding
 }
+
+/// The intro's pages.
+let introPages = 5
 
 /// Which parts of the HUD are on screen. The first run brings them in one at a time.
 struct HUDParts: Equatable {
@@ -78,12 +82,14 @@ enum Tip: String, CaseIterable {
 /// It gives a little shake when the player taps somewhere else.
 struct CoachBubble: View {
     let line: String
-    /// Which of the four coached tiles this is (0-based), or nil when there are no dots to show.
+    /// Which page or coached tile this is (0-based), or nil when there are no dots to show.
     var stepIndex: Int?
+    var dotCount = Tutorial.Step.allCases.count
     var nudges = 0
     var onSkip: (() -> Void)?
     var onGo: (() -> Void)?
     var goTitle = "Let's go"
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @ScaledMetric private var dotSize: CGFloat = 7
 
@@ -96,8 +102,9 @@ struct CoachBubble: View {
             }
             if stepIndex != nil || onSkip != nil || onGo != nil {
                 HStack(spacing: 6) {
-                    if let stepIndex {
-                        ForEach(0..<Tutorial.Step.allCases.count, id: \.self) { index in
+                    // At accessibility text sizes the dots make way for the buttons.
+                    if let stepIndex, !dynamicTypeSize.isAccessibilitySize {
+                        ForEach(0..<dotCount, id: \.self) { index in
                             Circle()
                                 .fill(index <= stepIndex ? Color.accentColor : Color.secondary.opacity(0.35))
                                 .frame(width: dotSize, height: dotSize)
@@ -106,13 +113,17 @@ struct CoachBubble: View {
                     }
                     Spacer(minLength: 0)
                     if let onSkip {
-                        Button("Skip", action: onSkip)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                        Button(action: onSkip) {
+                            Text("Skip").lineLimit(1).minimumScaleFactor(0.6)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                     if let onGo {
-                        Button(goTitle, action: onGo)
-                            .buttonStyle(.borderedProminent)
+                        Button(action: onGo) {
+                            Text(goTitle).lineLimit(1).minimumScaleFactor(0.6)
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -202,7 +213,7 @@ struct CoachHandView: View {
     }
 }
 
-/// The glimpse's photo frame: a white border dropped around the finished valley, tilted a little,
+/// The intro's photo frame: a white border dropped around the finished valley, tilted a little,
 /// with a "keep the picture" badge in its corner.
 struct GlimpseFrameLayer: View {
     let frame: CGRect?
@@ -235,5 +246,90 @@ struct GlimpseFrameLayer: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .animation(.snappy(duration: 0.45), value: frame)
+    }
+}
+
+/// The intro's first page: soft fog drifting over a valley the player can only just make out.
+struct IntroFog: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Where each cloud sits, as fractions of the screen.
+    private let clouds: [(x: CGFloat, y: CGFloat)] = [(0.2, 0.18), (0.8, 0.3), (0.35, 0.45), (0.75, 0.58), (0.25, 0.72), (0.65, 0.85)]
+
+    var body: some View {
+        GeometryReader { screen in
+            ZStack {
+                Color.white.opacity(0.28)
+                ForEach(clouds.indices, id: \.self) { index in
+                    Ellipse()
+                        .fill(.white.opacity(0.6))
+                        .frame(width: screen.size.width * 0.95, height: screen.size.height * 0.26)
+                        .blur(radius: 36)
+                        .position(x: screen.size.width * clouds[index].x, y: screen.size.height * clouds[index].y)
+                        .phaseAnimator([false, true]) { cloud, isAcross in
+                            cloud.offset(x: reduceMotion ? 0 : (isAcross ? 36 : -36) * (index.isMultiple(of: 2) ? 1 : -1))
+                        } animation: { _ in .easeInOut(duration: 5 + Double(index)) }
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The intro's power-ups page: each power-up and what it does, arriving one after another.
+struct PowerUpShowcase: View {
+    @State private var shown = 0
+    @ScaledMetric(relativeTo: .title2) private var iconWidth: CGFloat = 34
+
+    var body: some View {
+        // At the largest text sizes the list scrolls rather than slipping under the bubble.
+        ViewThatFits(in: .vertical) {
+            card
+            ScrollView { card }
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .padding(.horizontal, 8)
+        .task {
+            for count in 1...PowerUp.allCases.count {
+                withAnimation(.snappy) { shown = count }
+                try? await Task.sleep(for: .seconds(0.35))
+            }
+        }
+    }
+
+    private func row(_ index: Int) -> some View {
+        let powerUp = PowerUp.allCases[index]
+        return HStack(spacing: 14) {
+            Image(systemName: powerUp.symbolName)
+                .font(.title2)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: iconWidth)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(powerUp.title)
+                    .font(.headline)
+                Text(powerUp.pitch)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .opacity(index < shown ? 1 : 0)
+        .offset(x: index < shown ? 0 : -24)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The rows are laid out one by one, with no ForEach: ViewThatFits can size its candidates off the
+    /// main thread, where a main-actor ForEach closure would trap.
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            row(0)
+            row(1)
+            row(2)
+            row(3)
+            row(4)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 }

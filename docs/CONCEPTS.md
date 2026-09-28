@@ -18,6 +18,9 @@ Players place hex tiles (forest, field, river, village) to grow a landscape. Mat
 - **Meta:** every run leaves a finished little world. Saving it to a gallery makes the collection free to produce.
 - **Risk:** Dorfromantik (Toukana, a paid game on PC, Switch, PlayStation, Xbox and Mac) has announced an iOS port. The placement mechanic is shared genre territory. Patchwork Valley needs its own look and theme; a fabric-patch, quilt-stitch style fits the name.
 
+**Ideas on file (not planned yet):**
+- **An antagonist.** Three shapes, lightest first. A clever deal, like 2048's awkward spawns: cheap and invisible, but it can feel unfair. Creeping brambles that take one empty spot every few turns until fenced in: one new rule, and it fits the cozy mood. A rival builder that places a tile after each of the player's, growing from the far side of the crater until the two collide: the Carcassonne and StarCraft feel, but a big shift from calm that needs AI design and a board that still reads clearly. The game already asks a lot (the match rule, rivers, fog, mountains, lakes, the crater edge, quests, the tile limit, running out of room), so an antagonist should replace pressure rather than add to it. A rival fits best as its own mode or a later-valley twist (valley 10 on), proved first with the bot and a debug switch.
+
 ## 2. Prism
 
 **Mashup:** laser-and-mirror routing, a piece tray and color mixing.
