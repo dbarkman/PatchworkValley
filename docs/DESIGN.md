@@ -98,7 +98,7 @@ Coin mode builds the habit: players earn coins that get them a little further ea
 
 A new player on valley 1 is coached through the first tiles instead of reading rules; players past valley 1 never see it. It takes about 45 seconds, and **Skip** is always there.
 
-- **Glimpse (about 5 seconds):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog; the fog lifts ("Build a valley like this, one tile at a time."), a white photo frame drops around it ("Finish it, and keep the picture."), then it folds away, outer ring first, to the single starting tile. A tap skips to the fold.
+- **Glimpse (about 10 seconds, at least 2 per beat):** no HUD. The tutorial valley, finished by the bot, sits on the board under fog (2.5 s); the fog lifts (2.5 s, "Build a valley like this, one tile at a time."), a white photo frame drops around it (3 s, "Finish it, and keep the picture."), then it folds away a ring at a time to the single starting tile (2 s). Taps on the board don't cut it short; Skip does.
 - **Four coached tiles** on a fixed tutorial deal (`Tutorial`, valley-1 seed 120854), with dots showing the four steps. The HUD comes in piece by piece: first only the coin chip and the tile with Place.
   1. *Place:* one spot glows, a hand points at it, the ghost lands matching with its stitches, and Place wears a ring and the hand. One coin flies in.
   2. *Turn:* Rotate appears. The ghost lands as dealt, red, and shakes; "The sides don't match. Tap the tile to turn it." One turn matches two sides for two coins.

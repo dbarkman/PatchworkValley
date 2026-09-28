@@ -141,11 +141,13 @@ final class ValleyScene: SKScene {
             guard let tile = board[hex] else { return true }
             return sprite.texture !== texture(for: tile.edges, in: view)
         }
-        // A whole valley going away (the glimpse, a new valley) folds up from the outside in.
+        // A whole valley going away (the glimpse, a new valley) folds up from the outside in;
+        // the glimpse folds slowly, a ring at a time, so the player sees it come down to one tile.
         let farthest = stale.keys.map { $0.distance(to: .origin) }.max() ?? 0
+        let ringDelay = model?.glimpsePhase == .folding ? 0.2 : 0.06
         for (hex, sprite) in stale {
             tileSprites[hex] = nil
-            let delay = stale.count > 3 ? Double(farthest - hex.distance(to: .origin)) * 0.06 : 0
+            let delay = stale.count > 3 ? Double(farthest - hex.distance(to: .origin)) * ringDelay : 0
             sprite.run(.sequence([
                 .wait(forDuration: delay),
                 .group([.fadeOut(withDuration: 0.2), .scale(to: 0.6, duration: 0.2)]),

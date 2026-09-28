@@ -267,11 +267,8 @@ final class GameModel {
 
     /// First tap on a slot moves the ghost there in its best rotation; tapping the ghost again cycles fitting rotations.
     func tap(_ hex: Hex) {
-        // A tap during the glimpse skips ahead to the first tile; one at the hand-off lets the player go.
-        if coachStep == .glimpse {
-            foldGlimpse()
-            return
-        }
+        // The glimpse plays out (Skip ends it); a tap at the hand-off lets the player go.
+        if coachStep == .glimpse { return }
         if coachStep == .handOff { finishCoach() }
         if isAimingDynamite {
             blast(hex)
@@ -747,7 +744,7 @@ final class GameModel {
         guard let coachStep else { return nil }
         switch coachStep {
         case .glimpse:
-            return glimpsePhase == .framed ? "Finish it, and keep the picture." : "Build a valley like this, one tile at a time."
+            return glimpsePhase == .framed || glimpsePhase == .folding ? "Finish it, and keep the picture." : "Build a valley like this, one tile at a time."
         case .tile(.place):
             if selectedSlot == nil { return "Tap the glowing spot." }
             return isCoachedTileReady ? "Stitches mean the sides match. Tap Place." : "Tap the tile to turn it."
@@ -854,6 +851,9 @@ final class GameModel {
         glimpseBoard = nil
     }
 
+    /// Seconds each beat of the glimpse holds: long enough to take in, at least 2 each.
+    private static let glimpseBeat = (fogged: 2.5, lit: 2.5, framed: 3.0, folding: 2.0)
+
     /// The glimpse: the finished valley under fog, the fog lifting, a photo frame, then it folds away.
     /// On a first launch it opens already framed; after Reset Player the camera glides to it.
     private func startGlimpse(animated: Bool) {
@@ -869,16 +869,16 @@ final class GameModel {
         scene.sync()
         scene.fitValley(animated: animated)
         Task {
-            try? await Task.sleep(for: .seconds(0.8))
+            try? await Task.sleep(for: .seconds(Self.glimpseBeat.fogged))
             guard glimpseToken == token else { return }
             glimpsePhase = .lit
             scene.sync()
             scene.fitValley()
-            try? await Task.sleep(for: .seconds(1.4))
+            try? await Task.sleep(for: .seconds(Self.glimpseBeat.lit))
             guard glimpseToken == token else { return }
             glimpseFrame = scene.screenRect(of: displayBoard.tiles.keys)
             glimpsePhase = .framed
-            try? await Task.sleep(for: .seconds(1.6))
+            try? await Task.sleep(for: .seconds(Self.glimpseBeat.framed))
             guard glimpseToken == token else { return }
             foldGlimpse()
         }
@@ -894,7 +894,7 @@ final class GameModel {
         scene.sync()
         scene.recenter()
         Task {
-            try? await Task.sleep(for: .seconds(0.9))
+            try? await Task.sleep(for: .seconds(Self.glimpseBeat.folding))
             guard glimpseToken == token else { return }
             glimpsePhase = nil
             glimpseBoard = nil
