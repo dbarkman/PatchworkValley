@@ -44,6 +44,7 @@ Three tests are disabled by default because they are tools, not checks. Enable o
 ## Rules for changes
 
 - Game rules belong in `ValleyCore` and come with tests. The app never computes rules itself.
+- On-screen copy calls tiles **patches** (`patchCount(_:)` says "1 patch", "3 patches") and the empty places a patch can go **spots**, never hexes; code and docs say tiles and slots. Coins in general are **rewards** ("each match earns a reward"); "coins" goes only with an amount ("50 coins"). Every toast stays up for `toastSeconds` (1.5 s).
 - Every visible state change animates, whether through a SwiftUI transition or `.animation` or an `SKAction`. Nothing snaps.
 - UI sizes use `@ScaledMetric` or semantic fonts, never hard-coded values. Board world units are exempt because the camera zooms.
 - The project uses Swift 6 and iOS 26. The app target's default actor isolation is `MainActor`.

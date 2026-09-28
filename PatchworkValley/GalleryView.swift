@@ -111,7 +111,7 @@ private struct GalleryDetail: View {
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 Label(
-                    "\(entry.date.formatted(date: .abbreviated, time: .omitted)) · \(entry.coins) coins earned",
+                    "\(entry.date.formatted(date: .abbreviated, time: .omitted)) · \(coinCount(entry.coins)) earned",
                     systemImage: "centsign.circle.fill"
                 )
                 .font(.subheadline)

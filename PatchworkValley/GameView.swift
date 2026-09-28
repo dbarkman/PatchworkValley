@@ -451,7 +451,7 @@ private struct CoinsChip: View {
         }
         .animation(.snappy, value: model.walletShown)
         .animation(.snappy, value: model.coinChange)
-        .accessibilityLabel("\(model.wallet) coins")
+        .accessibilityLabel(coinCount(model.wallet))
     }
 }
 
@@ -534,7 +534,7 @@ private struct TilesLeft: View {
         }
         .animation(.snappy, value: tiles)
         .animation(.snappy, value: model.tileGain)
-        .accessibilityLabel("\(tiles) tiles left")
+        .accessibilityLabel("\(patchCount(tiles)) left")
     }
 }
 
@@ -695,7 +695,7 @@ private struct TileTray: View {
                     .id(tile.id)
                     .transition(.scale.combined(with: .opacity))
                     .onTapGesture { model.rotate() }
-                    .accessibilityLabel("Current tile. Tap to rotate.")
+                    .accessibilityLabel("Current patch. Tap to rotate.")
             }
 
             if model.hud.next {
@@ -745,11 +745,11 @@ private struct TileTray: View {
 
     @ViewBuilder private var status: some View {
         if model.game.isStuck {
-            Text("This tile fits nowhere")
+            Text("This patch fits nowhere")
                 .foregroundStyle(.orange)
         } else if model.demoPowerUp != nil {
             // Demo tiles pay nothing; the valley that follows is the real one.
-            Text("Practice tile")
+            Text("Practice patch")
                 .foregroundStyle(.secondary)
         } else if let reward = model.projectedReward {
             Label {
@@ -839,7 +839,7 @@ private struct OverlayCard: View {
     @ViewBuilder private var valleyIntro: some View {
         Text("Valley \(model.valley)")
             .font(.largeTitle.bold())
-        Label("\(model.game.tilesLeft) tiles", systemImage: "hexagon.fill")
+        Label(patchCount(model.game.tilesLeft), systemImage: "hexagon.fill")
             .font(.headline)
             .foregroundStyle(.secondary)
         if let powerUp = PowerUp.introduced(inValley: model.valley) {
@@ -863,7 +863,7 @@ private struct OverlayCard: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
-        Text("Every tile must match a side. Mountains and lakes hide in the fog, and rivers can flow into lakes.")
+        Text("Every patch must match a side. Mountains and lakes hide in the fog, and rivers can flow into lakes.")
             .font(.footnote)
             .multilineTextAlignment(.center)
             .foregroundStyle(.secondary)
@@ -880,7 +880,7 @@ private struct OverlayCard: View {
     @ViewBuilder private var valleyDone: some View {
         Text("Valley \(model.valley) complete!")
             .font(.title2.bold())
-        Label("\(model.game.coins) coins earned", systemImage: "centsign.circle.fill")
+        Label("\(coinCount(model.game.coins)) earned", systemImage: "centsign.circle.fill")
             .font(.title3.weight(.semibold))
         Text("Plus a \(CoinEconomy.valleyBonus) coin finishing bonus")
             .foregroundStyle(.secondary)
@@ -923,7 +923,7 @@ private struct OverlayCard: View {
     }
 
     @ViewBuilder private var valleyStuck: some View {
-        Text("No room for this tile")
+        Text("No room for this patch")
             .font(.title2.bold())
         if let tile = model.game.current {
             TilePreview(tile: tile)
@@ -971,7 +971,7 @@ private struct OverlayCard: View {
     @ViewBuilder private var levelIntro: some View {
         Text("Level \(model.level)")
             .font(.largeTitle.bold())
-        Label("\(model.game.tilesLeft) tiles", systemImage: "hexagon.fill")
+        Label(patchCount(model.game.tilesLeft), systemImage: "hexagon.fill")
             .font(.headline)
             .foregroundStyle(.secondary)
         VStack(alignment: .leading, spacing: 10) {
@@ -997,7 +997,7 @@ private struct OverlayCard: View {
             .font(.system(.largeTitle, design: .rounded).bold())
             .monospacedDigit()
         if model.game.tilesLeft > 0 {
-            Text("+\(model.game.tilesLeft * model.game.rules.unusedTileBonus) for \(tileCount(model.game.tilesLeft)) to spare")
+            Text("+\(model.game.tilesLeft * model.game.rules.unusedTileBonus) for \(patchCount(model.game.tilesLeft)) to spare")
                 .foregroundStyle(.secondary)
         }
         Button {
@@ -1010,7 +1010,7 @@ private struct OverlayCard: View {
     }
 
     @ViewBuilder private var levelLost: some View {
-        Text("Out of tiles")
+        Text("Out of patches")
             .font(.title2.bold())
         VStack(alignment: .leading, spacing: 8) {
             ForEach(model.game.goals) { goal in
@@ -1044,7 +1044,7 @@ private struct OverlayCard: View {
     }
 
     @ViewBuilder private var zenOver: some View {
-        Text("Out of tiles")
+        Text("Out of patches")
             .font(.title2.bold())
         Text(model.game.score, format: .number)
             .font(.system(.largeTitle, design: .rounded).bold())
@@ -1059,7 +1059,7 @@ private struct OverlayCard: View {
 
     @ViewBuilder private var nearMiss: some View {
         if let miss = model.game.nearMisses.first {
-            TerrainLabel(terrain: miss.terrain, text: "So close! Your \(miss.terrain.displayName.lowercased()) was \(tileCount(miss.remaining)) short of \(miss.target).")
+            TerrainLabel(terrain: miss.terrain, text: "So close! Your \(miss.terrain.displayName.lowercased()) was \(patchCount(miss.remaining)) short of \(miss.target).")
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .padding(.vertical, 4)
@@ -1071,7 +1071,7 @@ private struct OverlayCard: View {
             model.continueRun()
         } label: {
             VStack(spacing: 2) {
-                Text("+\(model.game.rules.continueTiles) tiles")
+                Text("+\(patchCount(model.game.rules.continueTiles))")
                     .font(.headline)
                 Group {
                     if model.mode != .coins {
@@ -1092,9 +1092,7 @@ private struct OverlayCard: View {
         .disabled(!model.canAffordMoreTiles)
     }
 
-    private func tileCount(_ count: Int) -> String {
-        count == 1 ? "1 tile" : "\(count) tiles"
-    }
+
 }
 
 /// Dark, readable text with the terrain's color carried by the icon; a green check once done.
@@ -1191,8 +1189,8 @@ extension PowerUp {
     /// A few words for the intro's power-ups page.
     var pitch: String {
         switch self {
-        case .undo: "Take back your last tile"
-        case .swap: "Trade your tile for another"
+        case .undo: "Take back your last patch"
+        case .swap: "Trade your patch for another"
         case .wildcard: "A patch that matches anything"
         case .dynamite: "Blast a mountain out of the way"
         case .lantern: "Light up what the fog hides"
@@ -1201,15 +1199,25 @@ extension PowerUp {
 
     var blurb: String {
         switch self {
-        case .undo: "Take back your last tile, and the rewards it earned."
-        case .swap: "Trade the tile in your hand for a fresh one."
-        case .wildcard: "Turn the tile in your hand into a patch that matches anything."
+        case .undo: "Take back your last patch, and the rewards it earned."
+        case .swap: "Trade the patch in your hand for a fresh one."
+        case .wildcard: "Turn the patch in your hand into one that matches anything."
         case .dynamite: "Blast a mountain you can see, opening the ground beneath it."
-        case .lantern: "Light up every mountain and lake in the valley. The fog returns after your next tile."
+        case .lantern: "Light up every mountain and lake in the valley. The fog returns after your next patch."
         }
     }
 }
 
 #Preview {
     GameView()
+}
+
+/// A count of patches, as the game says it: "1 patch", "3 patches". (Code calls them tiles; the game calls them patches.)
+func patchCount(_ count: Int) -> String {
+    count == 1 ? "1 patch" : "\(count) patches"
+}
+
+/// An amount of coins: "1 coin", "50 coins".
+func coinCount(_ count: Int) -> String {
+    count == 1 ? "1 coin" : "\(count) coins"
 }

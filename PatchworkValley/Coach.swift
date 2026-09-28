@@ -70,8 +70,8 @@ enum Tip: String, CaseIterable {
 
     var line: String {
         switch self {
-        case .swap: "Tricky tile? Spend rewards to Swap it for another."
-        case .noRoom: "It happens! A power-up can rescue this tile."
+        case .swap: "Tricky patch? Spend rewards to Swap it for another."
+        case .noRoom: "It happens! A power-up can rescue this patch."
         case .viewValley: "Lift the fog and see what you built."
         case .save: "Save it to keep the picture."
         }

@@ -543,7 +543,7 @@ final class GameModel {
         }
         if powerUp == .dynamite && hasNoDynamiteTarget {
             haptics.warn()
-            show("Only mountains inside the valley can be blasted, not its edge", symbol: PowerUp.dynamite.symbolName, seconds: 3)
+            show("Only mountains inside the valley can be blasted, not its edge", symbol: PowerUp.dynamite.symbolName)
             return
         }
         guard canUse(powerUp) else {
@@ -576,7 +576,7 @@ final class GameModel {
         case .lantern:
             coinGame.lightCrater()
             // The demo's bubble says it already.
-            if !isFree { show("Lantern lit until your next tile", symbol: powerUp.symbolName) }
+            if !isFree { show("Lantern lit until your next patch", symbol: powerUp.symbolName) }
         }
         // A coached try is on the house.
         if !isFree { spend(powerUp.price + takenBack, shown: powerUp.price + shownTakenBack) }
@@ -832,38 +832,38 @@ final class GameModel {
             return isEndingIntro ? nil : Self.introLines[min(page, Self.introLines.count - 1)]
         case .tile(.place):
             if selectedSlot == nil { return "Tap the glowing spot." }
-            return isCoachedTileReady ? "Stitches mean the sides match, and each match earns a reward. Tap Place." : "Tap the tile to turn it."
+            return isCoachedTileReady ? "Stitches mean the sides match, and each match earns a reward. Tap Place." : "Tap the patch to turn it."
         case .tile(.questTile):
-            if selectedSlot != nil { return isCoachedTileReady ? "Tap Place to start the quest." : "Tap the tile to turn it." }
+            if selectedSlot != nil { return isCoachedTileReady ? "Tap Place to start the quest." : "Tap the patch to turn it." }
             if let quest = game.current?.quest {
-                return "The below tile has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(quest.target) tiles. Tap the glowing spot."
+                return "The below patch has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(patchCount(quest.target)). Tap the glowing spot."
             }
             return "Tap the glowing spot."
         case .tile(.turn):
             if selectedSlot == nil {
                 if let quest = game.activeQuests.first, !isReplayingCoach {
-                    return "The badge counts the \(quest.terrain.displayName.lowercased()) tiles still needed. Tap the next glowing spot."
+                    return "The badge counts the \(quest.terrain.displayName.lowercased()) patches still needed. Tap the next glowing spot."
                 }
                 return "Tap the next glowing spot."
             }
-            return isCoachedTileReady ? "Now they match. Tap Place." : "The sides don't match. Tap the tile to turn it."
+            return isCoachedTileReady ? "Now they match. Tap Place." : "The sides don't match. Tap the patch to turn it."
         case .tile(.finishQuest):
-            if selectedSlot != nil && !isCoachedTileReady { return "Tap the tile to turn it." }
+            if selectedSlot != nil && !isCoachedTileReady { return "Tap the patch to turn it." }
             if let quest = game.activeQuests.first {
                 let terrain = quest.terrain.displayName.lowercased()
-                let tiles = quest.remaining == 1 ? "tile" : "tiles"
+                let patches = quest.remaining == 1 ? "patch" : "patches"
                 let count = ["One", "Two", "Three"].indices.contains(quest.remaining - 1) ? ["One", "Two", "Three"][quest.remaining - 1] : "\(quest.remaining)"
-                return "The chip up top tracks the quest too. \(count) more \(terrain) \(tiles) \(quest.remaining == 1 ? "finishes" : "finish") it for bonus rewards."
+                return "The chip up top tracks the quest too. \(count) more \(terrain) \(patches) \(quest.remaining == 1 ? "finishes" : "finish") it for bonus rewards."
             }
             return "Grow a quest's region to earn bonus rewards."
         case .tile(.choice):
             return "Your turn, tap any glowing spot."
         case .trySwap:
-            return "Matches and quests earn rewards, and rewards buy power-ups. Don't like your tile? Swap trades it for a new one. Try it free."
+            return "Matches and quests earn rewards, and rewards buy power-ups. Don't like your patch? Swap trades it for a new one. Try it free."
         case .handOff:
             if isReplayingCoach { return "That's the basics. Match sides, finish quests, and find what's hidden." }
             let lakes = game.rules.lakeCount
-            return "\(game.tilesLeft) tiles left to place. Can you find \(lakes) hidden \(lakes == 1 ? "lake" : "lakes")?"
+            return "\(patchCount(game.tilesLeft)) left to place. Can you find \(lakes) hidden \(lakes == 1 ? "lake" : "lakes")?"
         case .demo(let powerUp, let beat):
             return demoLine(powerUp, beat)
         }
@@ -875,15 +875,15 @@ final class GameModel {
         case (.undo, .place):
             return selectedSlot == nil ? "New power-up: Undo. First, tap the glowing spot." : "Tap Place."
         case (.undo, .use):
-            return "Changed your mind? Undo takes back your last tile. Tap Undo. This one's free."
+            return "Changed your mind? Undo takes back your last patch. Tap Undo. This one's free."
         case (.wildcard, .use):
-            return "This tile fits nowhere. A Wildcard turns it into a patch that matches anything. Tap Wildcard. This one's free."
+            return "This patch fits nowhere. A Wildcard turns it into one that matches anything. Tap Wildcard. This one's free."
         case (.wildcard, .placeWild):
             return selectedSlot == nil ? "It matches every side. Put it anywhere that glows." : "Tap Place."
         case (.dynamite, .autoPlace):
-            return "Watch: a tile goes down, and a mountain comes out of the fog."
+            return "Watch: a patch goes down, and a mountain comes out of the fog."
         case (.dynamite, .use):
-            return "Mountains inside the valley can be blasted away, freeing the tile for use. Tap Dynamite. This one's free."
+            return "Mountains inside the valley can be blasted away, freeing the spot for a patch. Tap Dynamite. This one's free."
         case (.dynamite, .aim):
             return "Now tap the glowing mountain."
         case (.dynamite, .done):
@@ -1618,12 +1618,12 @@ final class GameModel {
             show("\(goal.terrain.displayName) goal done!", symbol: "checkmark.circle.fill")
         } else if let quest = result.completedQuests.first {
             let reward = game.rules.questsRewardTiles
-                ? "+\(game.rules.questReward(for: quest.target)) tiles"
+                ? "+\(patchCount(game.rules.questReward(for: quest.growth)))"
                 : "+\(game.rules.questCoins(for: quest.growth)) coins"
             show("\(quest.terrain.displayName) complete! \(reward)", symbol: quest.terrain.symbolName)
         } else if result.evaluation.isPerfect {
             let reward = if game.rules.perfectBonusTiles > 0 {
-                "+\(game.rules.perfectBonusTiles) tile"
+                "+\(patchCount(game.rules.perfectBonusTiles))"
             } else if game.rules.coinsPerPerfect > 0 {
                 "+\(game.rules.coinsPerPerfect) coins"
             } else {
@@ -1639,12 +1639,15 @@ final class GameModel {
         }
     }
 
-    private func show(_ message: String, symbol: String, seconds: Double = 2) {
+    /// How long every toast stays up, so they all feel the same.
+    private static let toastSeconds = 1.5
+
+    private func show(_ message: String, symbol: String) {
         feedbackCount += 1
         let toast = Toast(id: feedbackCount, message: message, symbolName: symbol)
         self.toast = toast
         Task {
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(for: .seconds(Self.toastSeconds))
             if self.toast?.id == toast.id { self.toast = nil }
         }
     }
