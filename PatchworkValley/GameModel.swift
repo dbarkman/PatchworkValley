@@ -308,8 +308,11 @@ final class GameModel {
             turn(steps)
         } else {
             selectedSlot = hex
-            // The turning lesson shows the tile as dealt, so the player turns it themselves.
-            if coachStep != .tile(.turn), let steps = game.board.bestRotation(for: tile, at: hex), steps != 0 {
+            // A coached tile lands turned the way the lesson wants it; the turning lesson shows the
+            // tile as dealt, so the player turns it themselves.
+            if isCoachingATile, coachStep != .tile(.turn) {
+                _ = turnToCoachedRotation()
+            } else if coachStep != .tile(.turn), let steps = game.board.bestRotation(for: tile, at: hex), steps != 0 {
                 turn(steps)
             }
         }
@@ -832,7 +835,7 @@ final class GameModel {
         case .tile(.questTile):
             if selectedSlot != nil { return isCoachedTileReady ? "Tap Place to start the quest." : "Tap the tile to turn it." }
             if let quest = game.current?.quest {
-                return "This tile has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(quest.target) tiles. Tap the glowing spot."
+                return "The below tile has a quest. This tag means: grow a \(quest.terrain.displayName.lowercased()) of \(quest.target) tiles. Tap the glowing spot."
             }
             return "Tap the glowing spot."
         case .tile(.turn):
@@ -1309,6 +1312,21 @@ final class GameModel {
             step = self.step(after: tileStep)
         }
         coachStep = step
+        if step == .tile(.questTile) { turnQuestTagOverItsTerrain() }
+    }
+
+    /// The quest tile turns in the tray so its tag (drawn at the tile's top right) sits over the
+    /// quest's own terrain, where the tag's ring stands out. Tapping the spot turns it for placing.
+    private func turnQuestTagOverItsTerrain() {
+        guard let tile = game.current, let terrain = tile.quest?.terrain else { return }
+        // The tag covers mostly the upper-right wedge (direction 1) and a little of the upper-left (2).
+        func score(_ turns: Int) -> Int {
+            let turned = tile.rotatedClockwise(turns)
+            return (turned.edge(1) == terrain ? 2 : 0) + (turned.edge(2) == terrain ? 1 : 0)
+        }
+        var best = 0
+        for turns in [-1, 1, -2, 2, 3] where score(turns) > score(best) { best = turns }
+        if best != 0 { turn(best) }
     }
 
     // MARK: - Power-up demos
