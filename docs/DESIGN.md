@@ -19,6 +19,8 @@ On screen, the game calls tiles **patches** ("Every patch must match a side", "+
 
 Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1, no Zen best, and the first run and tips again (the gallery stays). The menu's **Debug** section (add coins, jump between valleys or levels) is in every build while the game is in testing. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
 
+**Large text:** text grows with the player's text size up to the second accessibility size (AX2). The top bar stops growing at the largest standard size, and from xLarge up it keeps icons and numbers only (the menu shows the valley number, the patch count drops "left"). At accessibility sizes the tray gives its status line a row of its own with Rotate above Place, the power-ups sit in rows of three (two on the out-of-room card), and a card too tall for the screen scrolls. A new board starts centered in the space between the top bar and the tray.
+
 ## Coin mode
 
 - Each valley is a fresh board with random quests, as in Zen. The first valleys are shorter: 24 tiles in valley 1, 30 in valley 2, and 36 from valley 3 on. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.

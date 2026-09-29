@@ -47,6 +47,7 @@ Three tests are disabled by default because they are tools, not checks. Enable o
 - On-screen copy calls tiles **patches** (`patchCount(_:)` says "1 patch", "3 patches") and the empty places a patch can go **spots**, never hexes; code and docs say tiles and slots. Coins in general are **rewards** ("each match earns a reward"); "coins" goes only with an amount ("50 coins"). Every toast stays up for `toastSeconds` (1.5 s).
 - Every visible state change animates, whether through a SwiftUI transition or `.animation` or an `SKAction`. Nothing snaps.
 - UI sizes use `@ScaledMetric` or semantic fonts, never hard-coded values. Board world units are exempt because the camera zooms.
+- `GameView` caps Dynamic Type at `.accessibility2`; the top bar and the tray's tiles stop at `.xxxLarge`. New HUD pieces must fit an iPhone 17 Pro at AX2 (`xcrun simctl ui booted content_size accessibility-large`), and anything that can't fit a row switches layout on `dynamicTypeSize.isAccessibilitySize`.
 - The project uses Swift 6 and iOS 26. The app target's default actor isolation is `MainActor`.
 - SpriteKit has had no new API since iOS 15. Keep it replaceable: it renders and handles gestures, nothing more. Avoid GameplayKit, which breaks under Swift 6 strict concurrency.
 - The board view ignores sibling order for speed, so every SpriteKit node that must draw above a sibling needs an explicit `zPosition`. That includes shapes rendered into tile textures. Scene layers sit 10 apart so the small depths inside a layer never reach the next one.

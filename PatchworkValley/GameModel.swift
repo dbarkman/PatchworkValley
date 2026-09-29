@@ -129,6 +129,9 @@ final class GameModel {
     @ObservationIgnored private var needsValleyFit = false
     /// Frame the valley above the coach's bubble once it has settled (the Lantern demo).
     @ObservationIgnored private var needsCoachFit = false
+    /// A new board recenters once its tray has settled (see `trayMoved`); this is the wait for that.
+    @ObservationIgnored private var recentersOnTray = true
+    @ObservationIgnored private var trayRecenter: Task<Void, Never>?
     /// The finished valley is being drawn and written to the gallery.
     private(set) var isSavingValley = false
     /// Tells a save that finishes late whether it still belongs to the valley on screen.
@@ -281,6 +284,7 @@ final class GameModel {
     func tap(_ hex: Hex) {
         // The glimpse plays out (Skip ends it); a tap at the hand-off lets the player go.
         if isInIntro { return }
+        playerTookCamera()
         // Aimed Dynamite takes the tap first (How to Play's hand-off leaves the power-ups usable).
         if isAimingDynamite {
             blast(hex)
@@ -647,7 +651,38 @@ final class GameModel {
     }
 
     func fitValley() {
+        playerTookCamera()
         scene.fitValley()
+    }
+
+    /// Where the tray begins, as the view measures it. A new board is centered before its tray is known
+    /// (it waits behind a card, or the last bar measured was another one), so once the tray has slid in and
+    /// settled, the start moves to the middle of the band above it, unless the player has already taken over.
+    func trayMoved(to minY: CGFloat) {
+        let moved = abs(scene.hudBottom - minY) > 0.5
+        scene.hudBottom = minY
+        guard recentersOnTray, moved, coachStep == nil, game.tilesPlaced == 0 else { return }
+        trayRecenter?.cancel()
+        trayRecenter = Task {
+            try? await Task.sleep(for: .seconds(0.4))
+            guard !Task.isCancelled else { return }
+            trayRecenter = nil
+            recentersOnTray = false
+            if game.tilesPlaced == 0 { scene.recenter() }
+        }
+    }
+
+    /// The player panned, pinched, fit the valley or tapped the board, so a waiting recenter stands down.
+    func playerTookCamera() {
+        trayRecenter?.cancel()
+        trayRecenter = nil
+        recentersOnTray = false
+    }
+
+    /// Centers a new board now, and again once its tray has settled (see `trayMoved`).
+    private func recenter() {
+        scene.recenter()
+        recentersOnTray = true
     }
 
     func beginValley() {
@@ -678,7 +713,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         scene.sync()
-        scene.recenter()
+        recenter()
     }
 
     private static func makeCoinGame(valley: Int) -> ValleyGame {
@@ -1401,7 +1436,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         scene.sync()
-        scene.recenter()
+        recenter()
         show("A fresh valley. Good luck!", symbol: "sparkles")
     }
 
@@ -1474,7 +1509,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         scene.sync()
-        scene.recenter()
+        recenter()
     }
 
     func beginLevel() {
@@ -1495,7 +1530,7 @@ final class GameModel {
             resetSelection()
             clearFeedback()
             scene.sync()
-            scene.recenter()
+            recenter()
         }
     }
 
@@ -1538,7 +1573,7 @@ final class GameModel {
         resetSelection()
         clearFeedback()
         scene.sync()
-        scene.recenter()
+        recenter()
     }
 
     private func resetValleyViewing() {

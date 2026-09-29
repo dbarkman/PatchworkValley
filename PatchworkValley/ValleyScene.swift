@@ -103,9 +103,15 @@ final class ValleyScene: SKScene {
         return convertPoint(toView: geometry.center(of: hex))
     }
 
+    /// Back to the valley's first tile at normal zoom, in the middle of the band between the HUD and the tray,
+    /// so a tray made tall by large text never covers it.
     func recenter() {
+        var target = CGPoint.zero
+        if let view, hudBottom > hudTop {
+            target.y = (hudTop + hudBottom) / 2 - view.bounds.midY
+        }
         cameraNode.run(.group([
-            .move(to: .zero, duration: 0.35),
+            .move(to: target, duration: 0.35),
             .scale(to: 1, duration: 0.35),
         ]), withKey: "camera")
     }
@@ -662,6 +668,7 @@ final class ValleyScene: SKScene {
             recognizer.setTranslation(.zero, in: view)
             return
         }
+        if recognizer.state == .began { model?.playerTookCamera() }
         let translation = recognizer.translation(in: view)
         cameraNode.position.x -= translation.x * cameraNode.xScale
         cameraNode.position.y += translation.y * cameraNode.yScale
@@ -675,6 +682,7 @@ final class ValleyScene: SKScene {
             recognizer.scale = 1
             return
         }
+        if recognizer.state == .began { model?.playerTookCamera() }
         let fingers = recognizer.location(in: view)
         let before = convertPoint(fromView: fingers)
         let scale = cameraNode.xScale / recognizer.scale

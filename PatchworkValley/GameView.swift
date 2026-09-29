@@ -4,6 +4,9 @@ import ValleyCore
 
 struct GameView: View {
     @State private var model = GameModel()
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// How far the top bar reaches below the top of the safe area; cards keep clear of it.
+    @State private var topBarBottom: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -23,7 +26,12 @@ struct GameView: View {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
                     .transition(.opacity)
+                // Centered on the screen, clear of the top bar. At accessibility text sizes it also takes
+                // the room below (the tray is away while a card shows), and scrolls if that isn't enough.
                 OverlayCard(overlay: overlay, model: model)
+                    .padding(.top, topBarBottom)
+                    // (A small gap below keeps a scrolling card from running on under the home indicator.)
+                    .padding(.bottom, dynamicTypeSize.isAccessibilitySize ? 8 : topBarBottom)
                     .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
 
@@ -31,6 +39,8 @@ struct GameView: View {
                 if model.hud.topBar {
                     TopBar(model: model)
                         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { model.scene.hudTop = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.space)).maxY } action: { topBarBottom = $0 }
+                        .onDisappear { topBarBottom = 0 }
                         .layoutPriority(1)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
@@ -80,7 +90,7 @@ struct GameView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else if model.overlay == nil && model.hud.tray {
                     TileTray(model: model)
-                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.scene.hudBottom = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { model.trayMoved(to: $0) }
                         .layoutPriority(1)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -99,8 +109,18 @@ struct GameView: View {
         .animation(.snappy, value: model.tip)
         .animation(.snappy, value: model.coachLine)
         .animation(.snappy, value: model.isBigPayoutInFlight)
+        .coordinateSpace(.named(Self.space))
+        // Text grows with the player's setting up to the second accessibility size; past that the HUD can't fit the screen.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .task { model.beginFirstRunIfNeeded() }
     }
+
+    private nonisolated static let space = "game"
+}
+
+extension DynamicTypeSize {
+    /// From this size up, the top bar drops its words ("Valley 5" becomes 5, "36 left" becomes 36) so it stays on one line.
+    var compactsTopBar: Bool { self >= .xLarge }
 }
 
 /// Coins streaming from a placed tile up to the coin chip, over everything else.
@@ -224,9 +244,13 @@ private struct ViewingBar: View {
 /// Shown while Dynamite waits for the player to pick a mountain.
 private struct AimingBanner: View {
     let model: GameModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
+        // At accessibility text sizes Cancel moves under the line, and the capsule becomes a rounded card.
+        let isLarge = dynamicTypeSize.isAccessibilitySize
+        let layout = isLarge ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             Label("Tap a glowing mountain to blast it", systemImage: PowerUp.dynamite.symbolName)
                 .font(.headline)
             Button("Cancel") { model.cancelDynamite() }
@@ -234,7 +258,7 @@ private struct AimingBanner: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
+        .background(.regularMaterial, in: isLarge ? AnyShape(RoundedRectangle(cornerRadius: 22, style: .continuous)) : AnyShape(Capsule()))
     }
 }
 
@@ -281,6 +305,9 @@ private struct TopBar: View {
         }
         .animation(.snappy, value: model.game.goals)
         .animation(.snappy, value: model.questChips)
+        // Counters to glance at, not text to read: past the largest standard size, three quest chips
+        // and the fit button would no longer fit one row.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 
     @ViewBuilder private var objectives: some View {
@@ -309,6 +336,7 @@ private struct TopBar: View {
 /// The mode switch, restart and gallery, labeled with where the player is.
 private struct GameMenu: View {
     let model: GameModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var confirming: Confirmation?
     @State private var isShowingGallery = false
 
@@ -356,14 +384,16 @@ private struct GameMenu: View {
                 }
             }
         } label: {
-            Label(menuTitle, systemImage: "line.3.horizontal")
+            Label(dynamicTypeSize.compactsTopBar ? shortMenuTitle : menuTitle, systemImage: "line.3.horizontal")
                 .font(.headline)
+                .lineLimit(1)
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText(value: Double(model.mode == .coins ? model.valley : model.level)))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.regularMaterial, in: Capsule())
         }
+        .accessibilityLabel(menuTitle)
         .animation(.snappy, value: model.level)
         .animation(.snappy, value: model.valley)
         .sheet(isPresented: $isShowingGallery) {
@@ -399,6 +429,15 @@ private struct GameMenu: View {
         }
     }
 
+    /// The menu's label at large text sizes: just the number, beside the menu icon.
+    private var shortMenuTitle: String {
+        switch model.mode {
+        case .coins: "\(model.valley)"
+        case .levels: model.hasFinishedAllLevels ? "Levels" : "\(model.level)"
+        case .zen: "Zen"
+        }
+    }
+
     private var restartTitle: String {
         switch model.mode {
         case .coins: "Restart Valley"
@@ -416,6 +455,8 @@ private struct CoinsChip: View {
         Label {
             Text(model.walletShown, format: .number)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .contentTransition(.numericText(value: Double(model.walletShown)))
         } icon: {
             Image(systemName: "centsign.circle.fill")
@@ -488,6 +529,8 @@ private struct Stat: View {
         Label {
             Text(value, format: .number)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .contentTransition(.numericText(value: Double(value)))
         } icon: {
             Image(systemName: symbol).foregroundStyle(tint)
@@ -503,6 +546,7 @@ private struct Stat: View {
 /// Tiles remaining, with a brief "+N" whenever a placement earns tiles.
 private struct TilesLeft: View {
     let model: GameModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         let tiles = model.game.tilesLeft
@@ -511,9 +555,12 @@ private struct TilesLeft: View {
                 Text(tiles, format: .number)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(tiles)))
-                Text("left")
-                    .foregroundStyle(.secondary)
+                if !dynamicTypeSize.compactsTopBar {
+                    Text("left")
+                        .foregroundStyle(.secondary)
+                }
             }
+            .lineLimit(1)
         } icon: {
             Image(systemName: "hexagon.fill").foregroundStyle(tiles <= 3 ? .orange : .mint)
         }
@@ -545,6 +592,7 @@ private struct GoalChip: View {
         Label {
             Text("\(min(goal.progress, goal.target))/\(goal.target)")
                 .monospacedDigit()
+                .lineLimit(1)
                 .contentTransition(.numericText(value: Double(goal.progress)))
         } icon: {
             Image(systemName: goal.isMet ? "checkmark.circle.fill" : goal.terrain.symbolName)
@@ -568,6 +616,7 @@ private struct QuestChip: View {
         Label {
             Text("\(quest.progress)/\(quest.target)")
                 .monospacedDigit()
+                .lineLimit(1)
                 .contentTransition(.numericText(value: Double(quest.progress)))
         } icon: {
             Image(systemName: symbol)
@@ -652,7 +701,8 @@ private struct ToastView: View {
             .font(.headline)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(.regularMaterial, in: Capsule())
+            // Rounded rather than a capsule, so a toast that wraps at large text sizes keeps its corners clear.
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -660,12 +710,37 @@ private struct ToastView: View {
 
 private struct TileTray: View {
     let model: GameModel
-    @ScaledMetric(relativeTo: .largeTitle) private var currentSize: CGFloat = 84
-    @ScaledMetric(relativeTo: .title) private var nextSize: CGFloat = 40
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 12) {
-            tiles
+            // At accessibility text sizes the status line gets a row of its own and Rotate sits above Place,
+            // so the patches keep their room and "Place" stays on one line.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    status
+                        .font(.subheadline)
+                        .lineLimit(2)
+                    HStack(spacing: 16) {
+                        TrayTiles(model: model)
+                        Spacer(minLength: 0)
+                        VStack(alignment: .trailing, spacing: 8) { buttons }
+                            .fixedSize()
+                    }
+                }
+            } else {
+                HStack(spacing: 16) {
+                    TrayTiles(model: model)
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 10) {
+                        status
+                            .font(.subheadline)
+                            .multilineTextAlignment(.trailing)
+                        HStack(spacing: 8) { buttons }
+                            .fixedSize()
+                    }
+                }
+            }
             if model.mode == .coins && model.hud.powerUps {
                 PowerUpBar(model: model)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -678,68 +753,22 @@ private struct TileTray: View {
         .animation(.snappy, value: model.hud)
     }
 
-    private var tiles: some View {
-        HStack(spacing: 16) {
-            if let tile = model.game.current {
-                // Draw the tile as it was before the player's turns and rotate the view, so each turn animates.
-                TilePreview(tile: tile.rotatedClockwise(-model.rotationTurns))
-                    .rotationEffect(.degrees(60 * Double(model.rotationTurns)))
-                    .animation(.snappy, value: model.rotationTurns)
-                    .overlay(alignment: .topTrailing) {
-                        if let quest = tile.quest {
-                            QuestTag(quest: quest)
-                                .coachMark(model.coachMarksQuestTag)
-                        }
-                    }
-                    .frame(width: currentSize, height: currentSize)
-                    .id(tile.id)
-                    .transition(.scale.combined(with: .opacity))
-                    .onTapGesture { model.rotate() }
-                    .accessibilityLabel("Current patch. Tap to rotate.")
-            }
-
-            if model.hud.next {
-                VStack(spacing: 4) {
-                    Text("Next")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let next = model.game.next {
-                        TilePreview(tile: next)
-                            .frame(width: nextSize, height: nextSize)
-                            .id(next.id)
-                            .transition(.scale.combined(with: .opacity))
-                    } else {
-                        Color.clear.frame(width: nextSize, height: nextSize)
-                    }
-                }
+    @ViewBuilder private var buttons: some View {
+        if model.hud.rotate {
+            Button("Rotate", systemImage: "arrow.clockwise") { model.rotate() }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
                 .transition(.scale.combined(with: .opacity))
-            }
-
-            Spacer(minLength: 0)
-
-            VStack(alignment: .trailing, spacing: 10) {
-                status
-                    .font(.subheadline)
-                    .multilineTextAlignment(.trailing)
-                HStack(spacing: 8) {
-                    if model.hud.rotate {
-                        Button("Rotate", systemImage: "arrow.clockwise") { model.rotate() }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.bordered)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                    if model.game.isStuck && model.game.rules.allowsDiscard {
-                        Button("Discard") { model.discard() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.orange)
-                    } else {
-                        Button("Place") { model.place() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!model.canPlace)
-                            .coachMark(model.coachMarksPlace, hand: model.coachHandOnPlace)
-                    }
-                }
-            }
+        }
+        if model.game.isStuck && model.game.rules.allowsDiscard {
+            Button("Discard") { model.discard() }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+        } else {
+            Button("Place") { model.place() }
+                .buttonStyle(.borderedProminent)
+                .disabled(!model.canPlace)
+                .coachMark(model.coachMarksPlace, hand: model.coachHandOnPlace)
         }
     }
 
@@ -768,6 +797,62 @@ private struct TileTray: View {
         } else {
             Text("Tap a glowing spot")
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The tile in hand and the next one. They grow with the text size up to the largest standard size,
+/// then stop, so the board keeps its room.
+private struct TrayTiles: View {
+    let model: GameModel
+
+    var body: some View {
+        Sizes(model: model)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+    }
+
+    private struct Sizes: View {
+        let model: GameModel
+        @ScaledMetric(relativeTo: .largeTitle) private var currentSize: CGFloat = 84
+        @ScaledMetric(relativeTo: .title) private var nextSize: CGFloat = 40
+
+        var body: some View {
+            HStack(spacing: 16) {
+                if let tile = model.game.current {
+                    // Draw the tile as it was before the player's turns and rotate the view, so each turn animates.
+                    TilePreview(tile: tile.rotatedClockwise(-model.rotationTurns))
+                        .rotationEffect(.degrees(60 * Double(model.rotationTurns)))
+                        .animation(.snappy, value: model.rotationTurns)
+                        .overlay(alignment: .topTrailing) {
+                            if let quest = tile.quest {
+                                QuestTag(quest: quest)
+                                    .coachMark(model.coachMarksQuestTag)
+                            }
+                        }
+                        .frame(width: currentSize, height: currentSize)
+                        .id(tile.id)
+                        .transition(.scale.combined(with: .opacity))
+                        .onTapGesture { model.rotate() }
+                        .accessibilityLabel("Current patch. Tap to rotate.")
+                }
+
+                if model.hud.next {
+                    VStack(spacing: 4) {
+                        Text("Next")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let next = model.game.next {
+                            TilePreview(tile: next)
+                                .frame(width: nextSize, height: nextSize)
+                                .id(next.id)
+                                .transition(.scale.combined(with: .opacity))
+                        } else {
+                            Color.clear.frame(width: nextSize, height: nextSize)
+                        }
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
         }
     }
 }
@@ -817,8 +902,20 @@ struct TilePreview: View {
 private struct OverlayCard: View {
     let overlay: Overlay
     let model: GameModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        // At large text sizes the card scrolls, so its buttons never leave the screen.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }
+                .scrollIndicatorsFlash(onAppear: true)
+        }
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .padding(.horizontal, 32)
+    }
+
+    private var content: some View {
         VStack(spacing: 14) {
             switch overlay {
             case .valleyIntro: valleyIntro
@@ -831,9 +928,9 @@ private struct OverlayCard: View {
             case .zenOver: zenOver
             }
         }
+        // Titles that wrap at large text sizes stay centered; the lists inside keep to the leading edge.
+        .multilineTextAlignment(.center)
         .padding(24)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 32)
     }
 
     @ViewBuilder private var valleyIntro: some View {
@@ -892,6 +989,7 @@ private struct OverlayCard: View {
                     QuestOutcomeRow(quest: quest)
                 }
             }
+            .multilineTextAlignment(.leading)
             .padding(.vertical, 4)
         }
         if model.offersMoreTiles {
@@ -940,11 +1038,7 @@ private struct OverlayCard: View {
         }
         let rescues = [PowerUp.swap, .undo, .wildcard, .dynamite].filter(model.isUnlocked)
         if !rescues.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(rescues) { powerUp in
-                    PowerUpButton(powerUp: powerUp, model: model)
-                }
-            }
+            PowerUpButtons(powerUps: rescues, model: model, columns: dynamicTypeSize.isAccessibilitySize ? 2 : rescues.count)
         }
         // On bought tiles the valley is already done, so it can end as done instead of being replayed.
         if model.game.hasFinishedStack {
@@ -980,6 +1074,7 @@ private struct OverlayCard: View {
                     .font(.title3.weight(.semibold))
             }
         }
+        .multilineTextAlignment(.leading)
         .padding(.vertical, 4)
         Button {
             model.beginLevel()
@@ -1018,6 +1113,7 @@ private struct OverlayCard: View {
                     .font(.headline)
             }
         }
+        .multilineTextAlignment(.leading)
         nearMiss
         continueButton
         Button("Retry level") { model.restart() }
@@ -1115,12 +1211,30 @@ private struct TerrainLabel: View {
 /// Coin mode's power-ups, each showing its price. Locked ones stay hidden until their valley introduces them.
 private struct PowerUpBar: View {
     let model: GameModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 6) {
-            // A demo shows only the power-up it's about.
-            ForEach(model.demoPowerUp.map { [$0] } ?? PowerUp.allCases.filter(model.isUnlocked)) { powerUp in
-                PowerUpButton(powerUp: powerUp, model: model)
+        // A demo shows only the power-up it's about.
+        let powerUps = model.demoPowerUp.map { [$0] } ?? PowerUp.allCases.filter(model.isUnlocked)
+        PowerUpButtons(powerUps: powerUps, model: model, columns: dynamicTypeSize.isAccessibilitySize ? 3 : powerUps.count)
+    }
+}
+
+/// Power-up buttons in one row, or in rows of `columns` when there are more than that, so names and prices
+/// stay readable at large text sizes.
+private struct PowerUpButtons: View {
+    let powerUps: [PowerUp]
+    let model: GameModel
+    let columns: Int
+
+    var body: some View {
+        if powerUps.count <= columns {
+            HStack(spacing: 6) {
+                ForEach(powerUps) { PowerUpButton(powerUp: $0, model: model) }
+            }
+        } else {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns), spacing: 6) {
+                ForEach(powerUps) { PowerUpButton(powerUp: $0, model: model) }
             }
         }
     }
