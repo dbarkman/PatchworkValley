@@ -27,7 +27,7 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 - **Hidden lakes** help rather than hinder: 2 per valley, 3 from valley 6, never next to each other. Tiles can't go on a lake, but a river edge touching one counts as a match (and a coin), and land can border it like a shore. A lake joins every river flowing into it into one region, and counts toward river quests. The preview ignores lakes still in fog; if a river turns out to flow into one, the match is paid when it's placed.
 - **Match rule:** every tile must match at least one neighboring edge (rivers still meet rivers). Mountains count as neither match nor clash, and a spot boxed in by tiles and mountains still counts toward a perfect fit.
 - **Win or lose:** placing the whole stack finishes the valley. If the tile in hand fits nowhere, the valley is **out of room**. The card offers a rescue (Swap, Undo, Wildcard or Dynamite) or a retry. There are no free discards in Coin mode.
-- **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile it asked for (a tile's forest-of-8 quest pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 500. On screen, coins in general are "rewards" ("each match earns a reward"), and "coins" goes with an amount ("50 coins"). Coin mode shows coins, never points. Earned coins fly from the placed tile to the coin chip, one coin per coin (the finishing bonus too), and the total counts up as they land while a gold "+N" rises into it; spending drops a red "−N" out of the chip.
+- **Coins:** every matched side pays 1. A quest pays 5 + 2 per tile it asked for (a tile's forest-of-8 quest pays 21). A perfect fit pays 5. Finishing a valley's stack pays 20, banked right away. Coins stay in a wallet across valleys; new players start with 300. On screen, coins in general are "rewards" ("each match earns a reward"), and "coins" goes with an amount ("50 coins"). Coin mode shows coins, never points. Earned coins fly from the placed tile to the coin chip, one coin per coin (the finishing bonus too), and the total counts up as they land while a gold "+N" rises into it; spending drops a red "−N" out of the chip.
 - **Valleys are numbered** and quests grow by one every three valleys, up to six bigger than valley 1's. Progress saves the moment a valley's stack is finished.
 - **Always a quest going:** 30% of tiles carry a quest (up to 3 at once). Whenever none is active and none is on a tile in view, the game sets one. Half the time it grows a region already on the board, favoring the biggest, such as "grow this village from 14 to 18" (3–5 more tiles, 2–3 for rivers), so building big regions pays off. The other half, it puts a fresh quest on the next tile. If one kind isn't possible, the other is used.
 - **Quest tiles ask for growth, wherever they land:** a quest tile asks its region to grow by its number minus one. Placed on its own, a village-8 tile means "grow to 8"; placed into a 14-village, it becomes "grow to 22" (a toast announces it), so joining a big region never wins a quest outright. This holds in Zen too. Quest rewards follow the growth asked for, counting the quest's first tile, not the region's full size.
@@ -48,13 +48,14 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 - **Dynamite with nothing to blast:** when every mountain found so far is on the valley's edge, the Dynamite button looks off but still answers a tap, with a message that only mountains inside the valley can be blasted.
 - **Economy and difficulty:** the disabled `coinEconomyReport` test plays 300 valleys with a bot that chases quests while keeping room open (a stand-in for a planning player):
 
-| Valley | Coins per valley (+20 bonus) | Quests | Out of room |
+| Valley | Coins per valley (bonus included) | Quests | Out of room |
 |---|---|---|---|
-| 1 | 75 | 2.5 | 8% |
-| 5 | 93 | 2.1 | 23% |
-| 10 | 82 | 1.4 | 27% |
+| 1 | 94 | 2.5 | 8% |
+| 5 | 108 | 2.1 | 23% |
+| 10 | 96 | 1.4 | 27% |
 
   Valley 1's shorter stack earns fewer coins and rarely runs out of room. With a quest always going, the bot chases quests harder and gets stuck a little more often; a purely greedy bot gets stuck about twice as often, so planning ahead pays.
+- **Starting wallet:** 300, sized with a simulation of a new player's first five valleys (the coached first valley, coins kept on retries, and a valley-5 Lantern). A player who takes the best-matching spot and buys each new power-up once, plus a Swap for the odd tile that fits two spots or fewer, reaches valley 6 with about 80 coins, and has about 10 left right after the Lantern. A casual player who buys each new power-up once reaches it with about 55; a planner who does the same, about 310. From valley 6 on, normal spending outruns earning, and coin packs start to matter.
 - Planned power-ups: Lift (move a placed tile), Pocket (set a tile aside to play later) and Peek (see the next three tiles).
 
 ## Levels
@@ -94,7 +95,7 @@ Finished Coin valleys can be saved from the *View valley* screen. The menu's **G
 
 ### Coin packs (planned)
 
-Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up. The starting wallet should let a new player try each early power-up a couple of times and get hooked, and a few free power-ups at the start (as the bus game does) are worth trying.
+Coin mode builds the habit: players earn coins that get them a little further each valley, and grow used to power-ups. When their coins run out, coin packs for real money let them keep powering up. The starting wallet carries a new player through the first five valleys and their power-ups (see *Starting wallet* above), and a few free power-ups at the start (as the bus game does) are worth trying.
 
 ## First run
 

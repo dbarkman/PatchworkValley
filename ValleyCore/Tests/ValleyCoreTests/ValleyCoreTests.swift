@@ -481,7 +481,7 @@ private let east = Hex(1, 0)
 }
 
 /// Economy check, not a pass/fail test: enable it to see what a typical Coin valley
-/// earns, and how often it runs out of room, when a bot chases the active quests
+/// earns (the finishing bonus included, as the app pays it), and how often it runs out of room, when a bot chases the active quests
 /// while keeping room open (a stand-in for a player who plans ahead).
 @Test(.disabled("Run by hand when tuning Coin mode"), arguments: [1, 5, 10])
 func coinEconomyReport(valley: Int) {
@@ -499,7 +499,7 @@ func coinEconomyReport(valley: Int) {
             game.rotateCurrent(clockwiseSteps: move.steps)
             game.placeCurrent(at: move.slot)
         }
-        totalCoins += game.coins
+        totalCoins += game.coins + (game.hasFinishedStack ? CoinEconomy.valleyBonus : 0)
         totalQuests += game.quests.filter { $0.status == .completed }.count
         if !game.nearMisses.isEmpty { nearMissRuns += 1 }
         if game.outcome == .outOfRoom {
