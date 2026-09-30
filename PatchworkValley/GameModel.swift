@@ -168,6 +168,7 @@ final class GameModel {
 
     @ObservationIgnored let scene: ValleyScene
     @ObservationIgnored private let haptics = Haptics()
+    @ObservationIgnored private let audio = AudioDirector()
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var feedbackCount = 0
 
@@ -313,6 +314,7 @@ final class GameModel {
             turn(steps)
         } else {
             selectedSlot = hex
+            audio.play(.selectSpot)
             // A coached tile lands turned the way the lesson wants it; the turning lesson shows the
             // tile as dealt, so the player turns it themselves.
             if isCoachingATile, coachStep != .tile(.turn) {

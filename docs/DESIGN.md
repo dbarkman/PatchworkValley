@@ -21,6 +21,8 @@ Drag to pan and pinch to zoom (around the fingers); the **fit** button beside th
 
 **Large text:** text grows with the player's text size up to the second accessibility size (AX2). The top bar stops growing at the largest standard size, and from xLarge up it keeps icons and numbers only (the menu shows the valley number, the patch count drops "left"). At accessibility sizes the tray gives its status line a row of its own with Rotate above Place, the power-ups sit in rows of three (two on the out-of-room card), and a card too tall for the screen scrolls. A new board starts centered in the space between the top bar and the tray.
 
+**Sound:** choosing a spot plays a very soft cloth tap; it plays on nearly every tap, so it stays barely there. Sounds follow the silent switch and mix with the player's own music, and each play varies its pitch slightly so repeats don't sound mechanical. More sounds are planned in the same sewing-box style: cloth, thread and wood for placing, music-box and kalimba notes for rewards, and nature around the valley.
+
 ## Coin mode
 
 - Each valley is a fresh board with random quests, as in Zen. The first valleys are shorter: 24 tiles in valley 1, 30 in valley 2, and 36 from valley 3 on. The stack only counts down: quests and perfect fits pay coins, never tiles. There is no score.
