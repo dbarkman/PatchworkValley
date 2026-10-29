@@ -15,6 +15,7 @@ A calm iOS puzzle game. Players place hex landscape tiles and match edges. **Coi
   - `TileDrawing` draws a tile as a list of paths. SpriteKit (board textures) and SwiftUI `Canvas` (tray previews) both use it, so tiles look the same everywhere.
   - `HexGeometry` converts pointy-top axial coordinates to points and back, in y-up space. Direction `i` points `60° × i` counter-clockwise from east.
 - `PatchworkValley.xcodeproj` uses synchronized folders, so new files in `PatchworkValley/` join the target automatically.
+- `PatchworkValley/PrivacyInfo.xcprivacy` is the privacy manifest: no tracking, no collected data, and the required-reason APIs the app calls (UserDefaults, `CA92.1`; `ProcessInfo.systemUptime` in `AudioDirector`, `35F9.1`). Code that adds a required-reason API (file timestamps, disk space, boot time, active keyboards, UserDefaults) adds its reason here. `docs/TESTFLIGHT.md` holds the TestFlight beta description and What to Test copy.
 
 ## Build and test
 
