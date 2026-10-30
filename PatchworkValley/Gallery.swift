@@ -14,13 +14,15 @@ struct GalleryEntry: Codable, Hashable, Identifiable {
 }
 
 /// The player's saved valleys, newest first: an index file plus a full picture and a
-/// thumbnail per valley, in Application Support. Reset Player leaves it alone.
+/// thumbnail per valley, in Application Support. Reset Player leaves it alone; Reset Everything empties it.
 @Observable
 final class Gallery {
     private(set) var entries: [GalleryEntry] = []
 
     @ObservationIgnored private let folder: URL
     @ObservationIgnored private var thumbnails: [UUID: UIImage] = [:]
+    /// Counts wipes, so a save that finishes after one is dropped rather than written into the empty gallery.
+    @ObservationIgnored private var generation = 0
 
     private var indexURL: URL { folder.appending(path: "gallery.json") }
 
@@ -42,6 +44,7 @@ final class Gallery {
     @discardableResult
     func add(_ picture: ValleyPicture, valley: Int, coins: Int) async -> GalleryEntry? {
         let entry = GalleryEntry(id: UUID(), valley: valley, coins: coins, date: .now, picture: picture)
+        let startedIn = generation
         let imageURL = imageURL(for: entry)
         let thumbnailURL = thumbnailURL(for: entry)
         let thumbnail = await Task.detached(priority: .userInitiated) { () -> UIImage? in
@@ -56,7 +59,7 @@ final class Gallery {
             }
             return thumbnail
         }.value
-        guard let thumbnail else {
+        guard let thumbnail, generation == startedIn else {
             removeFiles(for: entry)
             return nil
         }
@@ -77,6 +80,16 @@ final class Gallery {
         thumbnails[entry.id] = nil
         removeFiles(for: entry)
         try? saveIndex()
+    }
+
+    /// Deletes every saved valley and everything else in the folder (unreadable indexes set aside
+    /// included), leaving the empty folder a fresh install has.
+    func removeAll() {
+        generation += 1
+        entries = []
+        thumbnails = [:]
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
     func thumbnail(for entry: GalleryEntry) -> UIImage? {

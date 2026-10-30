@@ -623,6 +623,16 @@ final class GameModel {
 
     // MARK: - Valleys
 
+    /// Testing: wipes everything the game keeps, the app's whole defaults domain (every saved key) and
+    /// the gallery's folder, then starts over as a fresh install does, on the first run's intro.
+    func resetEverything() {
+        if let domain = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: domain)
+        }
+        gallery.removeAll()
+        resetPlayer()
+    }
+
     /// Starts over as a brand-new player: Coin mode, valley 1, the starting wallet,
     /// level 1 and no Zen best, as if the game were just installed. The gallery stays.
     func resetPlayer() {

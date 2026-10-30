@@ -17,7 +17,7 @@ On screen, the game calls tiles **patches** ("Every patch must match a side", "+
 - **Scoring (Levels and Zen):** 10 points per matching edge. A **perfect fit** leaves the tile no open side (every side touches a tile, a mountain or a found lake), clashes with no neighbor, and matches at least two sides (a river into a lake counts); it's judged once the tile is down, so what it uncovers counts. It adds 50 points (Zen also gives a tile). Coin mode pays coins instead.
 - **Stuck tiles (Levels and Zen):** a tile that fits nowhere can be discarded, which costs one tile. Coin mode has no discards; see *Win or lose* below.
 
-Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1, no Zen best, and the first run and tips again (the gallery stays). The menu's **Debug** section (add coins, jump between valleys or levels) is in every build while the game is in testing. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
+Drag to pan and pinch to zoom (around the fingers); the **fit** button beside the quest chips frames the whole valley, including the mountains and lakes found so far, between the HUD and the tray. The menu also restarts the current run, and **Reset Player** (after a confirmation) starts over as a brand-new player: Coin mode, valley 1, the starting wallet, level 1, no Zen best, and the first run and tips again (the gallery stays). The menu's **Testing** section sits at its bottom and is in every build, TestFlight included, while the game is in testing: **+500 Coins** and Next/Previous Valley in Coin mode, Next/Previous Level in Levels, and in every mode **Reset Everything**. Reset Everything asks first ("Reset everything? All progress, rewards and saved valleys go back to a fresh install.", Reset or Cancel), then wipes everything the game keeps, every saved setting and progress key and the whole gallery, and starts the first run's intro as a fresh install does, with no relaunch. All tuning numbers live in `Rules` (`ValleyCore/Sources/ValleyCore/ValleyGame.swift`) and, for coins and power-ups, `CoinEconomy.swift`.
 
 **Large text:** text grows with the player's text size up to the second accessibility size (AX2). The top bar stops growing at the largest standard size, and from xLarge up it keeps icons and numbers only (the menu shows the valley number, the patch count drops "left"). At accessibility sizes the tray gives its status line a row of its own with Rotate above Place, the power-ups sit in rows of three (two on the out-of-room card), and a card too tall for the screen scrolls. A new board starts centered in the space between the top bar and the tray.
 
@@ -88,7 +88,7 @@ One valley for a high score on the open plane (no crater, no match rule), starti
 
 ## Gallery
 
-Finished Coin valleys can be saved from the *View valley* screen. The menu's **Gallery** shows them newest first, with the valley number and date; tap one to see it full screen (pinch or double-tap to zoom), and press and hold, or use the trash button, to delete one after a confirmation. Each saved valley keeps its picture and its layout (every tile, mountain and lake), so it can be drawn again at any size, for sharing later. Reset Player leaves the gallery alone.
+Finished Coin valleys can be saved from the *View valley* screen. The menu's **Gallery** shows them newest first, with the valley number and date; tap one to see it full screen (pinch or double-tap to zoom), and press and hold, or use the trash button, to delete one after a confirmation. Each saved valley keeps its picture and its layout (every tile, mountain and lake), so it can be drawn again at any size, for sharing later. Reset Player leaves the gallery alone; Reset Everything (Testing) empties it.
 
 ## Monetization
 
@@ -136,7 +136,7 @@ Valleys 2–5 each bring a power-up, and the first time a player reaches one, it
 | 4 Dynamite | "Watch: a patch goes down, and a mountain comes out of the fog." waits for **Next**; the coach places the tile and a mountain rises. Tap Dynamite, then the glowing mountain; "Boom! Mountains on the valley's edge can't be blasted." |
 | 5 Lantern | "The Lantern shows them all for one turn." Tap Lantern; every hidden mountain and lake lights up, the camera frames the whole crater: "There's everything the fog was hiding." |
 
-Reset Player brings the demos back; players already past a valley don't get its demo.
+Reset Player and Reset Everything bring the demos back; players already past a valley don't get its demo.
 
 ## Visual direction
 
@@ -144,4 +144,4 @@ The look is patchwork quilt: tiles resemble fabric patches with stitched seams, 
 
 ## Prototype scope
 
-The prototype covers Coin mode (irregular craters, fog, mountains, lakes, a quest always going, five power-ups, coin flights), five designed levels, Zen mode, the near-miss cards, the first run and tips, View valley and the gallery, Reset Player and camera fit. It does not yet include real-money purchases, free starter power-ups, the quilt, sound, final art or sharing.
+The prototype covers Coin mode (irregular craters, fog, mountains, lakes, a quest always going, five power-ups, coin flights), five designed levels, Zen mode, the near-miss cards, the first run and tips, View valley and the gallery, Reset Player, the Testing section (+500 Coins, valley and level jumps, Reset Everything) and camera fit. It does not yet include real-money purchases, free starter power-ups, the quilt, sound, final art or sharing.

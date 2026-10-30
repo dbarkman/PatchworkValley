@@ -338,6 +338,7 @@ private struct GameMenu: View {
     let model: GameModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var confirming: Confirmation?
+    @State private var isConfirmingResetEverything = false
     @State private var isShowingGallery = false
 
     /// The destructive menu actions, which ask first.
@@ -369,11 +370,11 @@ private struct GameMenu: View {
                     confirming = .resetPlayer
                 }
             }
-            // Kept in every build while the game is in testing.
-            Section("Debug") {
+            // In every build, TestFlight included, while the game is in testing.
+            Section("Testing") {
                 switch model.mode {
                 case .coins:
-                    Button("Add 500 Coins", systemImage: "centsign.circle") { model.debugAddCoins(500) }
+                    Button("+500 Coins", systemImage: "centsign.circle") { model.debugAddCoins(500) }
                     Button("Next Valley", systemImage: "forward.end") { model.debugJumpValley(to: model.valley + 1) }
                     Button("Previous Valley", systemImage: "backward.end") { model.debugJumpValley(to: model.valley - 1) }
                 case .levels:
@@ -381,6 +382,9 @@ private struct GameMenu: View {
                     Button("Previous Level", systemImage: "backward.end") { model.debugJump(to: model.level - 1) }
                 case .zen:
                     EmptyView()
+                }
+                Button("Reset Everything", systemImage: "trash", role: .destructive) {
+                    isConfirmingResetEverything = true
                 }
             }
         } label: {
@@ -418,6 +422,12 @@ private struct GameMenu: View {
             case .resetPlayer:
                 Text("Your rewards, valley, level and best score go back to the start, as if the game were just installed.")
             }
+        }
+        .alert("Reset everything?", isPresented: $isConfirmingResetEverything) {
+            Button("Reset", role: .destructive) { model.resetEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All progress, rewards and saved valleys go back to a fresh install.")
         }
     }
 
