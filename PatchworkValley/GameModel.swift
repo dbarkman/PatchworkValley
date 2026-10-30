@@ -106,6 +106,8 @@ final class GameModel {
     private(set) var coinFlights: [CoinFlight] = []
     /// Counts coins landing on the chip, so it can pop with each one.
     private(set) var coinLandings = 0
+    /// Counts the Testing section's +500 top-ups, so the chip gives each one a bigger pop.
+    private(set) var coinTopUps = 0
     /// Where flying coins land: the coin icon on the chip, in view points, kept current as the chip moves.
     private(set) var coinTarget = CGPoint.zero
     /// Coins earned but still in the air. The chip shows the wallet less these.
@@ -1561,10 +1563,17 @@ final class GameModel {
         startLevel(1, canRewindProgress: true)
     }
 
+    /// The Testing section's top-up. A success haptic answers the tap at once; a beat later, once the menu
+    /// has closed, the chip pops and counts up with a gold "+N", so every tap visibly lands.
     func debugAddCoins(_ amount: Int) {
         addCoins(amount)
-        syncWalletShown()
-        showCoinChange(amount)
+        haptics.success()
+        Task {
+            try? await Task.sleep(for: .seconds(0.3))
+            syncWalletShown()
+            showCoinChange(amount)
+            coinTopUps += 1
+        }
     }
 
     func debugJumpValley(to number: Int) {

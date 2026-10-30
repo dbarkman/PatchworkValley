@@ -278,6 +278,8 @@ private struct TopBar: View {
                 if model.mode == .coins {
                     CoinsChip(model: model)
                         .coachMark(model.coachMarksCoins)
+                        // Its +500 pop grows past the 8-point gap, so it draws over its neighbors, not under.
+                        .zIndex(1)
                 } else {
                     Stat(symbol: "star.fill", value: model.game.score, tint: .yellow)
                 }
@@ -374,7 +376,15 @@ private struct GameMenu: View {
             Section("Testing") {
                 switch model.mode {
                 case .coins:
-                    Button("+500 Coins", systemImage: "centsign.circle") { model.debugAddCoins(500) }
+                    Button { model.debugAddCoins(500) } label: {
+                        Label {
+                            Text("+500 Coins")
+                            // The menu's subtitle: the balance, so reopening the menu shows each top-up.
+                            Text("You have \(coinCount(model.wallet))")
+                        } icon: {
+                            Image(systemName: "centsign.circle")
+                        }
+                    }
                     Button("Next Valley", systemImage: "forward.end") { model.debugJumpValley(to: model.valley + 1) }
                     Button("Previous Valley", systemImage: "backward.end") { model.debugJumpValley(to: model.valley - 1) }
                 case .levels:
@@ -488,6 +498,15 @@ private struct CoinsChip: View {
             KeyframeTrack {
                 CubicKeyframe(1.08, duration: 0.05)
                 CubicKeyframe(1.0, duration: 0.1)
+            }
+        }
+        // A bigger pop for each +500 from the Testing section.
+        .keyframeAnimator(initialValue: 1.0, trigger: model.coinTopUps) { content, scale in
+            content.scaleEffect(scale)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(1.2, duration: 0.12)
+                SpringKeyframe(1.0, duration: 0.35)
             }
         }
         // Earned coins rise from just below the chip into its total (the Dynamic Island sits above it);

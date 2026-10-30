@@ -1,12 +1,12 @@
 # Testing Patchwork Valley
 
-Build 2026102902 (version 1) is the one on TestFlight. Testers get it from TestFlight; a build from Xcode (scheme PatchworkValley) has the same menu.
+Build 2026103001 (version 1) is the one on TestFlight. Testers get it from TestFlight; a build from Xcode (scheme PatchworkValley) has the same menu.
 
 ## The Testing section
 
 The menu at the top left ends with a **Testing** section, in every build, TestFlight included:
 
-- **+500 Coins** (Coin mode) adds 500 to the wallet; the chip counts up with a gold "+500".
+- **+500 Coins** (Coin mode) adds 500 to the wallet. Each tap gives a success haptic, and as the menu closes the coin chip pops and counts up with a gold "+500"; the item's subtitle shows the balance ("You have 800 coins").
 - **Next Valley** and **Previous Valley** (Coin mode), **Next Level** and **Previous Level** (Levels) jump around.
 - **Reset Everything** (every mode) asks "Reset everything? All progress, rewards and saved valleys go back to a fresh install." with Reset and Cancel. Reset wipes every saved key (mode, valley, wallet, level, Zen best, first run done, tips and demos seen) and the whole gallery, then glides into the first run's intro on valley 1 with 300 coins, no relaunch needed.
 
